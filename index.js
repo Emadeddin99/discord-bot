@@ -26,6 +26,15 @@ const client = new Client({
   ]
 });
 
+// Add this after your imports at the top
+const KEEP_ALIVE_INTERVAL = 4 * 60 * 1000; // 4 minutes
+
+setInterval(() => {
+  if (client?.user) {
+    console.log(`💓 Keep-alive | Uptime: ${Math.floor(process.uptime() / 60)}m | Guilds: ${client.guilds.cache.size}`);
+  }
+}, KEEP_ALIVE_INTERVAL);
+
 // Command handler
 client.commands = new Collection();
 
