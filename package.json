@@ -1,0 +1,93 @@
+{
+  "name": "discord-bot",
+  "version": "1.0.0",
+  "description": "A feature-rich Discord bot with moderation, music, welcome system, and utility commands",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "deploy": "node deploy-commands.js",
+    "deploy:global": "node deploy-commands.js",
+    "deploy:guild": "node deploy-commands-guild.js",
+    "test": "echo \"No tests specified\" && exit 0",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "moderation",
+    "music",
+    "welcome",
+    "utility",
+    "automation",
+    "spotify",
+    "voice",
+    "slash-commands",
+    "discord.js"
+  ],
+  "author": {
+    "name": "Your Name",
+    "email": "your.email@example.com",
+    "url": "https://github.com/yourusername"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/discord-bot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/discord-bot/issues"
+  },
+  "homepage": "https://github.com/yourusername/discord-bot#readme",
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "@discordjs/voice": "^0.16.1",
+    "express": "^4.18.2",
+    "dotenv": "^16.3.1",
+    "libsodium-wrappers": "^0.7.13",
+    "opusscript": "^0.0.8",
+    "fs": "0.0.1-security",
+    "path": "^0.12.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "os": [
+    "windows",
+    "linux",
+    "darwin"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "private": true,
+  "funding": {
+    "type": "individual",
+    "url": "https://github.com/sponsors/yourusername"
+  },
+  "contributors": [
+    {
+      "name": "Your Name",
+      "email": "your.email@example.com"
+    }
+  ],
+  "files": [
+    "index.js",
+    "deploy-commands.js",
+    "render.yaml",
+    ".env.example",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "restricted"
+  }
+}
