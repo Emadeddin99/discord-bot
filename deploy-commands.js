@@ -378,14 +378,12 @@ const clientId = process.env.CLIENT_ID;
 if (!token) {
   console.error('❌ ERROR: DISCORD_BOT_TOKEN is not set in environment variables!');
   console.log('💡 Please set your Discord bot token in the .env file');
-  console.log('💡 Example: DISCORD_BOT_TOKEN=your_bot_token_here');
   process.exit(1);
 }
 
 if (!clientId) {
   console.error('❌ ERROR: CLIENT_ID is not set in environment variables!');
   console.log('💡 Please set your Discord client ID in the .env file');
-  console.log('💡 Example: CLIENT_ID=your_client_id_here');
   process.exit(1);
 }
 
@@ -393,30 +391,30 @@ const rest = new REST({ version: '10' }).setToken(token);
 
 async function deployCommands() {
   try {
-    console.log('🔄 Started refreshing global application (/) commands.');
+    console.log('🔄 Started refreshing application (/) commands.');
 
     const data = await rest.put(
       Routes.applicationCommands(clientId),
       { body: commands }
     );
 
-    console.log(`✅ Successfully reloaded ${data.length} global application (/) commands.`);
+    console.log(`✅ Successfully reloaded ${data.length} application (/) commands.`);
     console.log('📝 Commands deployed:');
     data.forEach(cmd => {
       console.log(`   - /${cmd.name}: ${cmd.description}`);
     });
     
-    console.log('\n🎉 Your bot commands are now live globally!');
+    console.log('\n🎉 Your bot commands are now live!');
     console.log('⏰ It may take up to 1 hour to appear in all servers.');
     console.log('🔧 New features available:');
-    console.log('   - Advanced Auto-Moderation (5 strikes before action)');
-    console.log('   - Music System (YouTube URL support)');
-    console.log('   - Leveling System (New → Member → Shadow roles)');
-    console.log('   - Enhanced Moderation (Warn/warnings/clearwarnings)');
-    console.log('   - Goodbye Message Configuration');
+    console.log('   - 🎵 Music commands (play, skip, stop, queue, volume)');
+    console.log('   - 📊 Leveling system (level, leaderboard, leveling-setup)');
+    console.log('   - 🛡️ Enhanced moderation (warn, warnings, clearwarnings)');
+    console.log('   - 👋 Goodbye messages (setgoodbye)');
+    console.log('   - ⚙️ Auto-moderation configuration');
     
   } catch (error) {
-    console.error('❌ Error deploying global commands:', error.message);
+    console.error('❌ Error deploying commands:', error.message);
     
     if (error.code === 50001) {
       console.log('💡 Missing Access: Make sure your bot is invited to the server with applications.commands scope');
@@ -424,24 +422,19 @@ async function deployCommands() {
       console.log('💡 Missing Permissions: Check your bot has the necessary permissions');
     } else if (error.code === 40060) {
       console.log('💡 Too many application commands: You have reached the limit of 100 commands');
-    } else if (error.code === 40041) {
-      console.log('💡 Invalid OAuth2 application: Check your CLIENT_ID is correct');
-    } else if (error.code === 401) {
-      console.log('💡 Invalid token: Check your DISCORD_BOT_TOKEN is correct');
     }
     
     process.exit(1);
   }
 }
 
+// Handle process events
 process.on('unhandledRejection', (error) => {
   console.error('Unhandled promise rejection:', error);
-  process.exit(1);
 });
 
 process.on('uncaughtException', (error) => {
   console.error('Uncaught exception:', error);
-  process.exit(1);
 });
 
 deployCommands();
