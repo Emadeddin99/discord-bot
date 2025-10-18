@@ -16,26 +16,20 @@ services:
     envVars:
       - key: DISCORD_BOT_TOKEN
         sync: false
-        required: true
       - key: CLIENT_ID
         sync: false
-        required: true
       - key: YOUR_USER_ID
         sync: false
-        required: false
       - key: GUILD_ID
         sync: false
-        required: false
       - key: PORT
         value: 3000
-      - key: NODE_VERSION
-        value: 18.17.0
       - key: NODE_ENV
         value: production
     
     # Health check and monitoring
     healthCheckPath: /health
-    initialDeployHook: echo "Initial deployment started"
+    initialDeployHook: echo "🚀 Starting Discord bot deployment..."
     
     # Security headers
     headers:
@@ -48,37 +42,3 @@ services:
       - path: /*
         name: X-XSS-Protection
         value: 1; mode=block
-      - path: /*
-        name: Strict-Transport-Security
-        value: max-age=31536000; includeSubDomains
-      - path: /*
-        name: Referrer-Policy
-        value: strict-origin-when-cross-origin
-    
-    # Advanced settings
-    disk:
-      name: data
-      mountPath: /data
-      sizeGB: 1
-    
-    # Scaling (for future paid plans)
-    # autoScaling:
-    #   minInstances: 1
-    #   maxInstances: 3
-    #   targetMemoryPercent: 70
-    #   targetCPUPercent: 70
-
-# Database service (optional - for future features)
-# - type: postgres
-#   name: bot-database
-#   plan: free
-#   ipAllowList: []
-#   disk:
-#     sizeGB: 1
-
-# Environment variable groups
-# envVarGroups:
-#   - name: discord-config
-#     envVars:
-#       - key: DISCORD_BOT_TOKEN
-#       - key: CLIENT_ID
