@@ -25,7 +25,7 @@ if (!guildId) {
 
 const rest = new REST({ version: '10' }).setToken(token);
 
-// Same commands as global deployment
+// Complete commands list with all new features
 const commands = [
   {
     name: 'ping',
@@ -82,6 +82,25 @@ const commands = [
         name: 'message',
         type: 3,
         description: 'Custom welcome message (use {user} for mention, {server} for server name, {count} for member count)',
+        required: false
+      }
+    ]
+  },
+  {
+    name: 'setgoodbye',
+    description: 'Set the goodbye channel for this server',
+    options: [
+      {
+        name: 'channel',
+        type: 7,
+        description: 'The channel to send goodbye messages to',
+        required: true,
+        channel_types: [0]
+      },
+      {
+        name: 'message',
+        type: 3,
+        description: 'Custom goodbye message (use {user} for mention, {server} for server name, {count} for member count)',
         required: false
       }
     ]
@@ -235,6 +254,141 @@ const commands = [
         required: true
       }
     ]
+  },
+  {
+    name: 'warn',
+    description: 'Warn a user for rule violation',
+    options: [
+      {
+        name: 'user',
+        type: 6,
+        description: 'The user to warn',
+        required: true
+      },
+      {
+        name: 'reason',
+        type: 3,
+        description: 'Reason for the warning',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'warnings',
+    description: 'Check warnings for a user',
+    options: [
+      {
+        name: 'user',
+        type: 6,
+        description: 'The user to check warnings for',
+        required: false
+      }
+    ]
+  },
+  {
+    name: 'clearwarnings',
+    description: 'Clear all warnings for a user',
+    options: [
+      {
+        name: 'user',
+        type: 6,
+        description: 'The user to clear warnings for',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'level',
+    description: 'Check your level or another user\'s level',
+    options: [
+      {
+        name: 'user',
+        type: 6,
+        description: 'The user to check level for',
+        required: false
+      }
+    ]
+  },
+  {
+    name: 'leaderboard',
+    description: 'Show the server level leaderboard'
+  },
+  {
+    name: 'leveling-setup',
+    description: 'Set up the leveling system for this server',
+    options: [
+      {
+        name: 'channel',
+        type: 7,
+        description: 'Channel for level-up notifications',
+        required: false,
+        channel_types: [0]
+      },
+      {
+        name: 'member_role',
+        type: 8,
+        description: 'Role to assign at member level',
+        required: false
+      },
+      {
+        name: 'shadow_role',
+        type: 8,
+        description: 'Role to assign at shadow level',
+        required: false
+      },
+      {
+        name: 'member_threshold',
+        type: 4,
+        description: 'Level required for member role (default: 10)',
+        required: false,
+        min_value: 1
+      },
+      {
+        name: 'shadow_threshold',
+        type: 4,
+        description: 'Level required for shadow role (default: 25)',
+        required: false,
+        min_value: 1
+      }
+    ]
+  },
+  {
+    name: 'play',
+    description: 'Play music from a YouTube URL or search term',
+    options: [
+      {
+        name: 'query',
+        type: 3,
+        description: 'YouTube URL or song name to play',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'skip',
+    description: 'Skip the current song'
+  },
+  {
+    name: 'stop',
+    description: 'Stop the music and clear the queue'
+  },
+  {
+    name: 'queue',
+    description: 'Show the current music queue'
+  },
+  {
+    name: 'volume',
+    description: 'Set the music volume',
+    options: [
+      {
+        name: 'level',
+        type: 4,
+        description: 'Volume level (1-100)',
+        required: true,
+        min_value: 1,
+        max_value: 100
+      }
+    ]
   }
 ];
 
@@ -255,18 +409,41 @@ async function deployGuildCommands() {
     
     console.log('\n🎉 Guild commands deployed successfully!');
     console.log('🚀 These commands will appear immediately in your test server.');
+    console.log('\n🔧 New Features Available:');
+    console.log('   🎵 Music System: /play, /skip, /stop, /queue, /volume');
+    console.log('   📊 Leveling System: /level, /leaderboard, /leveling-setup');
+    console.log('   🛡️ Enhanced Moderation: /warn, /warnings, /clearwarnings');
+    console.log('   👋 Goodbye Messages: /setgoodbye');
+    console.log('   ⚙️ Auto-Moderation: /automod');
+    console.log('   📜 Rules System: /rules');
+    console.log('   🔐 Verification: /setup-verification');
     
   } catch (error) {
     console.error('❌ Error deploying guild commands:', error.message);
     
     if (error.code === 50001) {
       console.log('💡 Missing Access: Bot not in the specified guild');
+      console.log('💡 Make sure your bot is invited to the server with ID:', guildId);
     } else if (error.code === 50013) {
       console.log('💡 Missing Permissions: Bot lacks permissions in the guild');
+      console.log('💡 Re-invite bot with proper permissions');
     } else if (error.code === 10004) {
       console.log('💡 Unknown Guild: Check your GUILD_ID is correct');
+      console.log('💡 Current GUILD_ID:', guildId);
+    } else if (error.code === 40060) {
+      console.log('💡 Too many commands: You have reached the limit');
+      console.log('💡 Try removing some unused commands');
     }
   }
 }
+
+// Handle uncaught errors
+process.on('unhandledRejection', (error) => {
+  console.error('Unhandled promise rejection:', error);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error);
+});
 
 deployGuildCommands();
