@@ -49,53 +49,27 @@
   },
   "homepage": "https://github.com/yourusername/discord-bot#readme",
   "dependencies": {
-    "discord.js": "^14.14.1",
     "@discordjs/voice": "^0.16.1",
-    "express": "^4.18.2",
+    "discord.js": "^14.14.1",
     "dotenv": "^16.3.1",
+    "express": "^4.18.2",
     "libsodium-wrappers": "^0.7.13",
-    "opusscript": "^0.0.8"
+    "opusscript": "^0.0.8",
+    "quick.db": "^9.1.7",
+    "ytdl-core": "^4.11.5"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1",
     "eslint": "^8.57.0",
-    "eslint-config-prettier": "^9.1.0"
+    "eslint-config-prettier": "^9.1.0",
+    "nodemon": "^3.0.1"
   },
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
   },
-  "os": [
-    "windows",
-    "linux",
-    "darwin"
-  ],
-  "cpu": [
-    "x64",
-    "arm64"
-  ],
   "private": true,
   "funding": {
     "type": "individual",
     "url": "https://github.com/sponsors/yourusername"
-  },
-  "contributors": [
-    {
-      "name": "Your Name",
-      "email": "your.email@example.com"
-    }
-  ],
-  "files": [
-    "index.js",
-    "deploy-commands.js",
-    "deploy-commands-guild.js",
-    "config.json",
-    "render.yaml",
-    ".env.example",
-    "README.md",
-    "LICENSE"
-  ],
-  "publishConfig": {
-    "access": "restricted"
   }
 }

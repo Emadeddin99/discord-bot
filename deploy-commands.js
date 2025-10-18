@@ -67,6 +67,25 @@ const commands = [
     ]
   },
   {
+    name: 'setgoodbye',
+    description: 'Set the goodbye channel for this server',
+    options: [
+      {
+        name: 'channel',
+        type: 7,
+        description: 'The channel to send goodbye messages to',
+        required: true,
+        channel_types: [0]
+      },
+      {
+        name: 'message',
+        type: 3,
+        description: 'Custom goodbye message (use {user} for mention, {server} for server name, {count} for member count)',
+        required: false
+      }
+    ]
+  },
+  {
     name: 'config',
     description: 'View the current bot configuration'
   },
@@ -215,6 +234,141 @@ const commands = [
         required: true
       }
     ]
+  },
+  {
+    name: 'warn',
+    description: 'Warn a user for rule violation',
+    options: [
+      {
+        name: 'user',
+        type: 6,
+        description: 'The user to warn',
+        required: true
+      },
+      {
+        name: 'reason',
+        type: 3,
+        description: 'Reason for the warning',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'warnings',
+    description: 'Check warnings for a user',
+    options: [
+      {
+        name: 'user',
+        type: 6,
+        description: 'The user to check warnings for',
+        required: false
+      }
+    ]
+  },
+  {
+    name: 'clearwarnings',
+    description: 'Clear all warnings for a user',
+    options: [
+      {
+        name: 'user',
+        type: 6,
+        description: 'The user to clear warnings for',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'level',
+    description: 'Check your level or another user\'s level',
+    options: [
+      {
+        name: 'user',
+        type: 6,
+        description: 'The user to check level for',
+        required: false
+      }
+    ]
+  },
+  {
+    name: 'leaderboard',
+    description: 'Show the server level leaderboard'
+  },
+  {
+    name: 'leveling-setup',
+    description: 'Set up the leveling system for this server',
+    options: [
+      {
+        name: 'channel',
+        type: 7,
+        description: 'Channel for level-up notifications',
+        required: false,
+        channel_types: [0]
+      },
+      {
+        name: 'member_role',
+        type: 8,
+        description: 'Role to assign at member level',
+        required: false
+      },
+      {
+        name: 'shadow_role',
+        type: 8,
+        description: 'Role to assign at shadow level',
+        required: false
+      },
+      {
+        name: 'member_threshold',
+        type: 4,
+        description: 'Level required for member role (default: 10)',
+        required: false,
+        min_value: 1
+      },
+      {
+        name: 'shadow_threshold',
+        type: 4,
+        description: 'Level required for shadow role (default: 25)',
+        required: false,
+        min_value: 1
+      }
+    ]
+  },
+  {
+    name: 'play',
+    description: 'Play music from a YouTube URL or search term',
+    options: [
+      {
+        name: 'query',
+        type: 3,
+        description: 'YouTube URL or song name to play',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'skip',
+    description: 'Skip the current song'
+  },
+  {
+    name: 'stop',
+    description: 'Stop the music and clear the queue'
+  },
+  {
+    name: 'queue',
+    description: 'Show the current music queue'
+  },
+  {
+    name: 'volume',
+    description: 'Set the music volume',
+    options: [
+      {
+        name: 'level',
+        type: 4,
+        description: 'Volume level (1-100)',
+        required: true,
+        min_value: 1,
+        max_value: 100
+      }
+    ]
   }
 ];
 
@@ -247,7 +401,7 @@ async function deployCommands() {
     );
 
     console.log(`✅ Successfully reloaded ${data.length} global application (/) commands.`);
-    console.log('📝 Commands deployed globally:');
+    console.log('📝 Commands deployed:');
     data.forEach(cmd => {
       console.log(`   - /${cmd.name}: ${cmd.description}`);
     });
@@ -255,19 +409,17 @@ async function deployCommands() {
     console.log('\n🎉 Your bot commands are now live globally!');
     console.log('⏰ It may take up to 1 hour to appear in all servers.');
     console.log('🔧 New features available:');
-    console.log('   - Advanced Auto-Moderation (Arabic & English)');
-    console.log('   - Interactive Rules System');
-    console.log('   - Verification System');
-    console.log('   - Enhanced Welcome/Goodbye Messages');
-    console.log('   - Professional Moderation Logs');
+    console.log('   - Advanced Auto-Moderation (5 strikes before action)');
+    console.log('   - Music System (YouTube URL support)');
+    console.log('   - Leveling System (New → Member → Shadow roles)');
+    console.log('   - Enhanced Moderation (Warn/warnings/clearwarnings)');
+    console.log('   - Goodbye Message Configuration');
     
   } catch (error) {
     console.error('❌ Error deploying global commands:', error.message);
     
-    // Helpful error messages
     if (error.code === 50001) {
       console.log('💡 Missing Access: Make sure your bot is invited to the server with applications.commands scope');
-      console.log('💡 Invite URL should include: applications.commands bot permission');
     } else if (error.code === 50013) {
       console.log('💡 Missing Permissions: Check your bot has the necessary permissions');
     } else if (error.code === 40060) {
@@ -276,15 +428,12 @@ async function deployCommands() {
       console.log('💡 Invalid OAuth2 application: Check your CLIENT_ID is correct');
     } else if (error.code === 401) {
       console.log('💡 Invalid token: Check your DISCORD_BOT_TOKEN is correct');
-    } else if (error.code === 403) {
-      console.log('💡 Forbidden: Bot may not have access or is in too many servers');
     }
     
     process.exit(1);
   }
 }
 
-// Handle process events
 process.on('unhandledRejection', (error) => {
   console.error('Unhandled promise rejection:', error);
   process.exit(1);
