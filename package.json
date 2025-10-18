@@ -1,7 +1,7 @@
 {
   "name": "discord-bot",
-  "version": "1.0.0",
-  "description": "A feature-rich Discord bot with moderation, music, welcome system, and utility commands",
+  "version": "2.0.0",
+  "description": "A feature-rich Discord bot with moderation, music, welcome system, auto-moderation, and utility commands",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -9,9 +9,11 @@
     "deploy": "node deploy-commands.js",
     "deploy:global": "node deploy-commands.js",
     "deploy:guild": "node deploy-commands-guild.js",
+    "deploy:render": "node deploy-commands.js",
     "test": "echo \"No tests specified\" && exit 0",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "postinstall": "echo 'Dependencies installed successfully!'"
   },
   "keywords": [
     "discord",
@@ -24,7 +26,13 @@
     "spotify",
     "voice",
     "slash-commands",
-    "discord.js"
+    "discord.js",
+    "auto-moderation",
+    "verification",
+    "rules-system",
+    "multi-language",
+    "render",
+    "deployment"
   ],
   "author": {
     "name": "Your Name",
@@ -46,9 +54,7 @@
     "express": "^4.18.2",
     "dotenv": "^16.3.1",
     "libsodium-wrappers": "^0.7.13",
-    "opusscript": "^0.0.8",
-    "fs": "0.0.1-security",
-    "path": "^0.12.7"
+    "opusscript": "^0.0.8"
   },
   "devDependencies": {
     "nodemon": "^3.0.1",
@@ -82,6 +88,8 @@
   "files": [
     "index.js",
     "deploy-commands.js",
+    "deploy-commands-guild.js",
+    "config.json",
     "render.yaml",
     ".env.example",
     "README.md",

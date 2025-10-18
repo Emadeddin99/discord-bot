@@ -1,7 +1,7 @@
 // Load environment variables FIRST
 require('dotenv').config();
 
-const { Client, GatewayIntentBits, EmbedBuilder, ActivityType, Collection, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ActivityType, Collection, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField, REST, Routes, ChannelType } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, entersState, VoiceConnectionStatus } = require('@discordjs/voice');
 const fs = require('fs').promises;
 const path = require('path');
@@ -23,6 +23,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildPresences,
+    GatewayIntentBits.GuildMessageReactions,
   ]
 });
 
@@ -42,9 +43,28 @@ client.commands = new Collection();
 const configPath = path.join(__dirname, 'config.json');
 let serverConfigs = {};
 
+// Enhanced banned words (Arabic and English)
+const GLOBAL_BANNED_WORDS = {
+  english: [
+    'fuck', 'shit', 'bitch', 'asshole', 'dick', 'pussy', 'whore', 'slut',
+    'nigger', 'nigga', 'chink', 'spic', 'kike', 'fag', 'faggot',
+    'kill yourself', 'kys', 'die', 'retard', 'mongoloid'
+  ],
+  arabic: [
+    'كس', 'طيز', 'زبر', 'شرموط', 'عاهر', 'قحبة', 'دعارة',
+    'كسم', 'كسمك', 'كسمكم', 'ابن المتناكة', 'ابن الكلب',
+    'حمار', 'كلب', 'غبي', 'عبيط', 'هطل', 'لحس', 'يلعن',
+    'كفر', 'ملحد', 'زنديق', 'يلعن دين', 'طائفي'
+  ]
+};
+
 // Voice connection storage
 const voiceConnections = new Map();
 const audioPlayers = new Map();
+
+// User cooldowns for spam protection
+const userCooldowns = new Map();
+const messageCounts = new Map();
 
 // Load configuration
 async function loadConfig() {
@@ -85,11 +105,33 @@ function getServerConfig(guildId) {
       spotifyPlaylist: null,
       rules: [],
       rulesChannel: null,
+      rulesMessageId: null,
+      modLogChannel: null,
+      warnings: {},
+      automod: {
+        enabled: true,
+        bannedWords: [],
+        action: 'warn',
+        strikeLimit: 3,
+        muteDurationMs: 10 * 60 * 1000,
+        antiSpam: true,
+        antiLinks: true,
+        antiMention: true,
+        maxMentions: 5,
+        antiCaps: true,
+        capsPercentage: 70,
+        antiInvites: true
+      },
       verification: {
         enabled: false,
         role: null,
         channel: null,
         messageId: null
+      },
+      leveling: {
+        enabled: false,
+        levelUpChannel: null,
+        rewards: {}
       }
     };
   }
@@ -98,8 +140,6 @@ function getServerConfig(guildId) {
 
 // Spotify music function (placeholder)
 function createSpotifyStream() {
-  // Placeholder - implement actual Spotify streaming
-  // For now, create a silent audio resource
   return createAudioResource(path.join(__dirname, 'assets/silent.mp3'));
 }
 
@@ -112,23 +152,18 @@ async function joinVoice(guildId, channelId) {
     const channel = guild.channels.cache.get(channelId);
     if (!channel) return null;
 
-    // Create voice connection
     const connection = joinVoiceChannel({
       channelId: channel.id,
       guildId: guild.id,
       adapterCreator: guild.voiceAdapterCreator,
     });
 
-    // Create audio player
     const player = createAudioPlayer();
     audioPlayers.set(guildId, player);
 
-    // Handle connection events
     connection.on(VoiceConnectionStatus.Ready, () => {
       console.log(`🔊 Joined voice channel: ${channel.name} in ${guild.name}`);
       connection.subscribe(player);
-
-      // Start playing Spotify stream
       const resource = createSpotifyStream();
       player.play(resource);
     });
@@ -182,7 +217,172 @@ function leaveVoice(guildId) {
   return false;
 }
 
-// Command definitions
+// Enhanced Auto-Moderation Functions
+function containsBannedWords(text, config) {
+  const lowerText = text.toLowerCase();
+  const allBannedWords = [
+    ...GLOBAL_BANNED_WORDS.english,
+    ...GLOBAL_BANNED_WORDS.arabic,
+    ...config.automod.bannedWords
+  ];
+
+  for (const word of allBannedWords) {
+    if (word && lowerText.includes(word.toLowerCase())) {
+      return { found: true, word: word };
+    }
+  }
+  return { found: false };
+}
+
+function hasExcessiveCaps(text, percentage = 70) {
+  if (text.length < 10) return false;
+  const capsCount = (text.match(/[A-Z]/g) || []).length;
+  const capsPercentage = (capsCount / text.length) * 100;
+  return capsPercentage > percentage;
+}
+
+function hasExcessiveMentions(text, maxMentions = 5) {
+  const mentionCount = (text.match(/@/g) || []).length;
+  return mentionCount > maxMentions;
+}
+
+function containsInviteLinks(text) {
+  const inviteRegex = /(discord\.gg\/|discordapp\.com\/invite\/|discord\.com\/invite\/)/i;
+  return inviteRegex.test(text);
+}
+
+function isSpam(userId, guildId) {
+  const key = `${guildId}-${userId}`;
+  const now = Date.now();
+  
+  if (!messageCounts.has(key)) {
+    messageCounts.set(key, []);
+  }
+  
+  const userMessages = messageCounts.get(key);
+  userMessages.push(now);
+  
+  // Keep only messages from last 5 seconds
+  const recentMessages = userMessages.filter(time => now - time < 5000);
+  messageCounts.set(key, recentMessages);
+  
+  return recentMessages.length > 5;
+}
+
+async function handleModAction(message, reason, config) {
+  try {
+    const userId = message.author.id;
+    const guildId = message.guild.id;
+    
+    // Initialize warnings for user if not exists
+    if (!serverConfigs[guildId].warnings[userId]) {
+      serverConfigs[guildId].warnings[userId] = 0;
+    }
+    
+    serverConfigs[guildId].warnings[userId]++;
+    const strikes = serverConfigs[guildId].warnings[userId];
+
+    // Delete the offending message
+    try {
+      await message.delete();
+    } catch (error) {
+      console.log('Could not delete message:', error.message);
+    }
+
+    // Create mod log embed
+    const logEmbed = new EmbedBuilder()
+      .setTitle('🛡️ Auto-Moderation Action')
+      .setColor(0xFF6B6B)
+      .addFields(
+        { name: '👤 User', value: `${message.author.tag} (${message.author.id})`, inline: true },
+        { name: '📝 Channel', value: `${message.channel}`, inline: true },
+        { name: '🚫 Reason', value: reason, inline: true },
+        { name: '⚠️ Strikes', value: `${strikes}/${config.automod.strikeLimit}`, inline: true }
+      )
+      .setFooter({ text: 'Auto-Moderation System' })
+      .setTimestamp();
+
+    // Send to user via DM
+    try {
+      const userEmbed = new EmbedBuilder()
+        .setTitle('⚠️ Auto-Moderation Warning')
+        .setColor(0xFFA500)
+        .setDescription(`You have been warned in **${message.guild.name}**`)
+        .addFields(
+          { name: 'Reason', value: reason, inline: true },
+          { name: 'Strikes', value: `${strikes}/${config.automod.strikeLimit}`, inline: true },
+          { name: 'Message', value: message.content.substring(0, 100) + '...', inline: false }
+        )
+        .setFooter({ text: 'Please follow the server rules' })
+        .setTimestamp();
+      
+      await message.author.send({ embeds: [userEmbed] });
+    } catch (error) {
+      // Can't DM user, log it
+      logEmbed.addFields({ name: '📨 DM Status', value: 'Failed to send DM', inline: true });
+    }
+
+    // Send to mod log channel
+    await sendModLog(message.guild, logEmbed);
+
+    // Check if strike limit reached
+    if (strikes >= config.automod.strikeLimit) {
+      await executeModAction(message.member, config.automod.action, config);
+      serverConfigs[guildId].warnings[userId] = 0; // Reset strikes
+    }
+
+    await saveConfig();
+
+  } catch (error) {
+    console.error('Error in handleModAction:', error);
+  }
+}
+
+async function executeModAction(member, action, config) {
+  try {
+    switch (action) {
+      case 'mute':
+        if (member.moderatable) {
+          await member.timeout(config.automod.muteDurationMs, 'Auto-mod: Strike limit reached');
+          return `Muted for ${config.automod.muteDurationMs / 60000} minutes`;
+        }
+        break;
+      case 'kick':
+        if (member.kickable) {
+          await member.kick('Auto-mod: Strike limit reached');
+          return 'Kicked from server';
+        }
+        break;
+      case 'ban':
+        if (member.bannable) {
+          await member.ban({ reason: 'Auto-mod: Strike limit reached' });
+          return 'Banned from server';
+        }
+        break;
+      default:
+        return 'Warned';
+    }
+  } catch (error) {
+    console.error('Error executing mod action:', error);
+    return 'Action failed';
+  }
+}
+
+async function sendModLog(guild, embed) {
+  try {
+    const config = getServerConfig(guild.id);
+    if (!config.modLogChannel) return;
+    
+    const logChannel = guild.channels.cache.get(config.modLogChannel);
+    if (logChannel) {
+      await logChannel.send({ embeds: [embed] });
+    }
+  } catch (error) {
+    console.error('Error sending mod log:', error);
+  }
+}
+
+// Enhanced Command Definitions
 const commands = [
   {
     name: 'ping',
@@ -214,9 +414,9 @@ const commands = [
         .setColor(0x3498DB)
         .setDescription('Here are all available commands!')
         .addFields(
-          { name: '🎪 General', value: '`/ping`, `/help`, `/server-info`, `/user-info`, `/avatar`, `/membercount`', inline: true },
-          { name: '🛠️ Moderation', value: '`/clear`, `/slowmode`', inline: true },
-          { name: '⚙️ Admin', value: '`/setwelcome`, `/config`, `/spotify`', inline: true }
+          { name: '🎪 General', value: '`/ping`, `/help`, `/server-info`, `/user-info`, `/avatar`, `/membercount`', inline: false },
+          { name: '🛠️ Moderation', value: '`/clear`, `/slowmode`, `/warn`, `/mute`, `/unmute`', inline: false },
+          { name: '⚙️ Admin', value: '`/setwelcome`, `/config`, `/spotify`, `/rules`, `/automod`, `/setup-verification`', inline: false }
         )
         .setFooter({ text: 'Use slash commands (/) to interact with the bot!' });
 
@@ -412,6 +612,7 @@ const commands = [
       const autoRole = config.autoRole ? `<@&${config.autoRole}>` : 'Not set';
       const spotifyChannel = config.spotifyChannel ? `<#${config.spotifyChannel}>` : 'Not set';
       const isSpotifyConnected = voiceConnections.has(interaction.guild.id);
+      const modLogChannel = config.modLogChannel ? `<#${config.modLogChannel}>` : 'Not set';
 
       const embed = new EmbedBuilder()
         .setTitle('⚙️ Server Configuration')
@@ -425,7 +626,10 @@ const commands = [
           { name: '🔄 Spotify Auto-Join', value: config.spotifyAutoJoin ? '✅ Enabled' : '❌ Disabled', inline: true },
           { name: '📨 Welcome DMs', value: config.enableDMs ? 'Enabled' : 'Disabled', inline: true },
           { name: '🎉 Welcome Messages', value: config.enableWelcome ? 'Enabled' : 'Disabled', inline: true },
-          { name: '👋 Goodbye Messages', value: config.enableGoodbye ? 'Enabled' : 'Disabled', inline: true }
+          { name: '👋 Goodbye Messages', value: config.enableGoodbye ? 'Enabled' : 'Disabled', inline: true },
+          { name: '🛡️ Mod Log Channel', value: modLogChannel, inline: true },
+          { name: '⚡ Auto-Mod', value: config.automod.enabled ? '✅ Enabled' : '❌ Disabled', inline: true },
+          { name: '⚠️ Strike Limit', value: `${config.automod.strikeLimit}`, inline: true }
         )
         .setFooter({ text: `Server ID: ${interaction.guild.id}` })
         .setTimestamp();
@@ -482,10 +686,6 @@ const commands = [
         case 'join':
           if (!channel) {
             return interaction.reply({ content: '❌ Please specify a voice channel to join.', ephemeral: true });
-          }
-
-          if (!interaction.member.voice.channel) {
-            return interaction.reply({ content: '❌ You need to be in a voice channel to use this command.', ephemeral: true });
           }
 
           const joined = await joinVoice(guildId, channel.id);
@@ -633,6 +833,340 @@ const commands = [
         await interaction.reply({ content: '❌ Failed to set slowmode.', ephemeral: true });
       }
     }
+  },
+  {
+    name: 'rules',
+    description: 'Manage server rules',
+    options: [
+      {
+        name: 'action',
+        type: 3,
+        description: 'Action to perform',
+        required: true,
+        choices: [
+          { name: 'add', value: 'add' },
+          { name: 'remove', value: 'remove' },
+          { name: 'list', value: 'list' },
+          { name: 'setchannel', value: 'setchannel' },
+          { name: 'clear', value: 'clear' },
+          { name: 'post', value: 'post' }
+        ]
+      },
+      {
+        name: 'text',
+        type: 3,
+        description: 'Rule text (for add)',
+        required: false
+      },
+      {
+        name: 'index',
+        type: 4,
+        description: 'Rule index (for remove)',
+        required: false
+      },
+      {
+        name: 'channel',
+        type: 7,
+        description: 'Channel to post rules or set as rules channel',
+        required: false,
+        channel_types: [0]
+      }
+    ],
+    async execute(interaction) {
+      if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+        return interaction.reply({ content: '❌ You need administrator permissions.', ephemeral: true });
+      }
+
+      const action = interaction.options.getString('action');
+      const text = interaction.options.getString('text');
+      const idx = interaction.options.getInteger('index');
+      const channel = interaction.options.getChannel('channel');
+      const config = getServerConfig(interaction.guild.id);
+
+      switch (action) {
+        case 'add':
+          if (!text) return interaction.reply({ content: '❌ Provide rule text to add.', ephemeral: true });
+          config.rules.push(text);
+          await saveConfig();
+          const addEmbed = new EmbedBuilder()
+            .setTitle('✅ Rule Added')
+            .setColor(0x2ECC71)
+            .setDescription(text)
+            .setTimestamp();
+          return interaction.reply({ embeds: [addEmbed] });
+
+        case 'remove':
+          if (typeof idx !== 'number' || idx < 1 || idx > config.rules.length) {
+            return interaction.reply({ content: '❌ Provide a valid rule index.', ephemeral: true });
+          }
+          const removed = config.rules.splice(idx - 1, 1);
+          await saveConfig();
+          const removeEmbed = new EmbedBuilder()
+            .setTitle('🗑️ Rule Removed')
+            .setColor(0xE67E22)
+            .setDescription(removed[0])
+            .setTimestamp();
+          return interaction.reply({ embeds: [removeEmbed] });
+
+        case 'list':
+          if (!config.rules.length) {
+            return interaction.reply({ content: 'ℹ️ No rules set for this server.', ephemeral: true });
+          }
+          const desc = config.rules.map((r, i) => `**${i + 1}.** ${r}`).join('\n\n').slice(0, 4000);
+          const listEmbed = new EmbedBuilder()
+            .setTitle('📜 Server Rules')
+            .setColor(0x3498DB)
+            .setDescription(desc)
+            .setTimestamp();
+          return interaction.reply({ embeds: [listEmbed] });
+
+        case 'setchannel':
+          if (!channel) return interaction.reply({ content: '❌ Provide a text channel.', ephemeral: true });
+          config.rulesChannel = channel.id;
+          await saveConfig();
+          const channelEmbed = new EmbedBuilder()
+            .setTitle('✅ Rules Channel Set')
+            .setColor(0x2ECC71)
+            .setDescription(`Rules will be posted in ${channel}`)
+            .setTimestamp();
+          return interaction.reply({ embeds: [channelEmbed] });
+
+        case 'clear':
+          config.rules = [];
+          await saveConfig();
+          const clearEmbed = new EmbedBuilder()
+            .setTitle('🗑️ Rules Cleared')
+            .setColor(0xE74C3C)
+            .setTimestamp();
+          return interaction.reply({ embeds: [clearEmbed] });
+
+        case 'post':
+          if (!config.rules.length) {
+            return interaction.reply({ content: '❌ No rules to post. Add rules first.', ephemeral: true });
+          }
+          const targetChannel = channel || interaction.channel;
+          const rulesEmbed = new EmbedBuilder()
+            .setTitle('📜 Server Rules')
+            .setColor(0x9B59B6)
+            .setDescription(`Welcome to **${interaction.guild.name}**! Please read and follow these rules:\n\n${config.rules.map((r, i) => `**${i + 1}.** ${r}`).join('\n\n')}`)
+            .setFooter({ text: 'By participating in this server, you agree to follow these rules.' })
+            .setTimestamp();
+
+          const rulesButton = new ActionRowBuilder()
+            .addComponents(
+              new ButtonBuilder()
+                .setCustomId('agree_rules')
+                .setLabel('✅ I Agree to the Rules')
+                .setStyle(ButtonStyle.Success)
+                .setEmoji('✅')
+            );
+
+          try {
+            const rulesMessage = await targetChannel.send({ 
+              embeds: [rulesEmbed],
+              components: [rulesButton]
+            });
+            config.rulesMessageId = rulesMessage.id;
+            await saveConfig();
+
+            const successEmbed = new EmbedBuilder()
+              .setTitle('✅ Rules Posted Successfully')
+              .setColor(0x2ECC71)
+              .setDescription(`Rules have been posted in ${targetChannel}`)
+              .setTimestamp();
+            return interaction.reply({ embeds: [successEmbed], ephemeral: true });
+          } catch (error) {
+            return interaction.reply({ content: '❌ Failed to post rules in that channel.', ephemeral: true });
+          }
+      }
+    }
+  },
+  {
+    name: 'automod',
+    description: 'Configure auto moderation',
+    options: [
+      {
+        name: 'action',
+        type: 3,
+        description: 'What automod should do',
+        required: true,
+        choices: [
+          { name: 'toggle', value: 'toggle' },
+          { name: 'status', value: 'status' },
+          { name: 'setaction', value: 'setaction' },
+          { name: 'setlog', value: 'setlog' },
+          { name: 'addword', value: 'addword' },
+          { name: 'removeword', value: 'removeword' },
+          { name: 'listwords', value: 'listwords' }
+        ]
+      },
+      {
+        name: 'value',
+        type: 3,
+        description: 'Value for setaction (warn/mute/kick/ban) or word to add/remove',
+        required: false
+      },
+      {
+        name: 'channel',
+        type: 7,
+        description: 'Channel for moderation logs',
+        required: false,
+        channel_types: [0]
+      }
+    ],
+    async execute(interaction) {
+      if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+        return interaction.reply({ content: '❌ You need administrator permissions.', ephemeral: true });
+      }
+
+      const action = interaction.options.getString('action');
+      const value = interaction.options.getString('value');
+      const channel = interaction.options.getChannel('channel');
+      const config = getServerConfig(interaction.guild.id);
+
+      switch (action) {
+        case 'toggle':
+          config.automod.enabled = !config.automod.enabled;
+          await saveConfig();
+          return interaction.reply({ 
+            content: `⚙️ Auto-Mod is now **${config.automod.enabled ? '✅ Enabled' : '❌ Disabled'}**` 
+          });
+
+        case 'status':
+          const statusEmbed = new EmbedBuilder()
+            .setTitle('📊 Auto-Mod Status')
+            .setColor(0x3498DB)
+            .addFields(
+              { name: 'Enabled', value: config.automod.enabled ? '✅' : '❌', inline: true },
+              { name: 'Action', value: config.automod.action, inline: true },
+              { name: 'Strike Limit', value: `${config.automod.strikeLimit}`, inline: true },
+              { name: 'Anti-Spam', value: config.automod.antiSpam ? '✅' : '❌', inline: true },
+              { name: 'Anti-Links', value: config.automod.antiLinks ? '✅' : '❌', inline: true },
+              { name: 'Anti-Mention', value: config.automod.antiMention ? '✅' : '❌', inline: true },
+              { name: 'Anti-Caps', value: config.automod.antiCaps ? '✅' : '❌', inline: true },
+              { name: 'Anti-Invites', value: config.automod.antiInvites ? '✅' : '❌', inline: true },
+              { name: 'Custom Words', value: `${config.automod.bannedWords.length}`, inline: true }
+            )
+            .setFooter({ text: `Log Channel: ${config.modLogChannel ? '✅ Set' : '❌ Not set'}` })
+            .setTimestamp();
+          return interaction.reply({ embeds: [statusEmbed] });
+
+        case 'setaction':
+          if (!value || !['warn','mute','kick','ban'].includes(value)) {
+            return interaction.reply({ content: '❌ Provide a valid action: warn|mute|kick|ban', ephemeral: true });
+          }
+          config.automod.action = value;
+          await saveConfig();
+          return interaction.reply({ content: `✅ Auto-Mod action set to **${value}**` });
+
+        case 'setlog':
+          if (!channel) return interaction.reply({ content: '❌ Provide a text channel for logs.', ephemeral: true });
+          config.modLogChannel = channel.id;
+          await saveConfig();
+          return interaction.reply({ content: `✅ Moderation logs will be sent to ${channel}` });
+
+        case 'addword':
+          if (!value) return interaction.reply({ content: '❌ Provide a word to add to banned list.', ephemeral: true });
+          if (config.automod.bannedWords.includes(value.toLowerCase())) {
+            return interaction.reply({ content: '❌ This word is already in the banned list.', ephemeral: true });
+          }
+          config.automod.bannedWords.push(value.toLowerCase());
+          await saveConfig();
+          return interaction.reply({ content: `✅ Added "${value}" to banned words list` });
+
+        case 'removeword':
+          if (!value) return interaction.reply({ content: '❌ Provide a word to remove from banned list.', ephemeral: true });
+          const index = config.automod.bannedWords.indexOf(value.toLowerCase());
+          if (index === -1) {
+            return interaction.reply({ content: '❌ This word is not in the banned list.', ephemeral: true });
+          }
+          config.automod.bannedWords.splice(index, 1);
+          await saveConfig();
+          return interaction.reply({ content: `✅ Removed "${value}" from banned words list` });
+
+        case 'listwords':
+          const customWords = config.automod.bannedWords.length > 0 
+            ? config.automod.bannedWords.map(w => `• ${w}`).join('\n')
+            : 'No custom banned words set';
+          const wordsEmbed = new EmbedBuilder()
+            .setTitle('🚫 Custom Banned Words')
+            .setColor(0xE74C3C)
+            .setDescription(customWords)
+            .setFooter({ text: `Total: ${config.automod.bannedWords.length} words` })
+            .setTimestamp();
+          return interaction.reply({ embeds: [wordsEmbed], ephemeral: true });
+      }
+    }
+  },
+  {
+    name: 'setup-verification',
+    description: 'Set up verification system for new members',
+    options: [
+      {
+        name: 'channel',
+        type: 7,
+        description: 'Channel for verification',
+        required: true,
+        channel_types: [0]
+      },
+      {
+        name: 'role',
+        type: 8,
+        description: 'Role to assign after verification',
+        required: true
+      }
+    ],
+    async execute(interaction) {
+      if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+        return interaction.reply({ content: '❌ You need administrator permissions.', ephemeral: true });
+      }
+
+      const channel = interaction.options.getChannel('channel');
+      const role = interaction.options.getRole('role');
+      const config = getServerConfig(interaction.guild.id);
+
+      config.verification.enabled = true;
+      config.verification.channel = channel.id;
+      config.verification.role = role.id;
+
+      const verifyEmbed = new EmbedBuilder()
+        .setTitle('🔐 Server Verification')
+        .setColor(0x9B59B6)
+        .setDescription(`Welcome to **${interaction.guild.name}**!\n\nTo access the server, please verify that you're human by clicking the button below.`)
+        .addFields(
+          { name: '📋 Steps', value: '1. Click the "Verify" button below\n2. Complete the verification process\n3. Get access to the server!' },
+          { name: '🛡️ Security', value: 'This helps us keep the server safe from bots and spam.' }
+        )
+        .setFooter({ text: 'Verification System' })
+        .setTimestamp();
+
+      const verifyButton = new ActionRowBuilder()
+        .addComponents(
+          new ButtonBuilder()
+            .setCustomId('start_verification')
+            .setLabel('Verify Now')
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji('✅')
+        );
+
+      try {
+        const verifyMessage = await channel.send({ 
+          embeds: [verifyEmbed],
+          components: [verifyButton]
+        });
+        config.verification.messageId = verifyMessage.id;
+        await saveConfig();
+
+        const successEmbed = new EmbedBuilder()
+          .setTitle('✅ Verification System Setup')
+          .setColor(0x2ECC71)
+          .setDescription(`Verification system has been set up in ${channel}\nVerified members will receive the ${role} role.`)
+          .setTimestamp();
+        await interaction.reply({ embeds: [successEmbed] });
+      } catch (error) {
+        await interaction.reply({ content: '❌ Failed to set up verification system.', ephemeral: true });
+      }
+    }
   }
 ];
 
@@ -737,7 +1271,6 @@ If you need help, don't hesitate to ask our moderators!
       let welcomeMessage;
 
       if (config.welcomeMessage) {
-        // Replace placeholders in custom message
         welcomeMessage = config.welcomeMessage
           .replace(/{user}/g, member.user.toString())
           .replace(/{server}/g, member.guild.name)
@@ -745,7 +1278,6 @@ If you need help, don't hesitate to ask our moderators!
           .replace(/{username}/g, member.user.username)
           .replace(/{tag}/g, member.user.tag);
       } else {
-        // Default welcome message
         welcomeMessage = `🎉 **Welcome to ${member.guild.name}, ${member.user}!** 🎉\n\nWe're excited to have you with us! You are our **#${memberCount}** member!\n\nWelcome to the community! 🚀`;
       }
 
@@ -785,14 +1317,12 @@ async function sendGoodbyeMessage(member) {
   let goodbyeMessage;
 
   if (config.goodbyeMessage) {
-    // Replace placeholders in custom message
     goodbyeMessage = config.goodbyeMessage
       .replace(/{user}/g, member.user.tag)
       .replace(/{server}/g, member.guild.name)
       .replace(/{username}/g, member.user.username)
       .replace(/{count}/g, member.guild.memberCount);
   } else {
-    // Default goodbye message
     goodbyeMessage = `👋 **Goodbye, ${member.user.tag}!**\n\nWe're sad to see you leave ${member.guild.name}. You'll be missed! 😢\n\n**Server Members:** ${member.guild.memberCount}`;
   }
 
@@ -806,13 +1336,11 @@ async function sendGoodbyeMessage(member) {
 
 // Auto-join voice channel when you join
 client.on('voiceStateUpdate', async (oldState, newState) => {
-  // Check if it's you who joined a voice channel
   const yourUserId = process.env.YOUR_USER_ID || 'YOUR_USER_ID_HERE';
 
   if (newState.member.id === yourUserId) {
     const config = getServerConfig(newState.guild.id);
 
-    // Check if auto-join is enabled and we're not already in a voice channel
     if (config.spotifyAutoJoin && !voiceConnections.has(newState.guild.id)) {
       const channelToJoin = config.spotifyChannel || newState.channelId;
 
@@ -839,6 +1367,47 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     }
   }
 });
+
+// Enhanced Auto-Moderation Message Handler
+async function handleAutoMod(message) {
+  if (!message.guild || message.author.bot) return;
+  
+  const config = getServerConfig(message.guild.id);
+  if (!config.automod.enabled) return;
+
+  const content = message.content;
+  const violations = [];
+
+  // Check banned words
+  const bannedWordCheck = containsBannedWords(content, config);
+  if (bannedWordCheck.found) {
+    violations.push(`Banned word: "${bannedWordCheck.word}"`);
+  }
+
+  // Check spam
+  if (config.automod.antiSpam && isSpam(message.author.id, message.guild.id)) {
+    violations.push('Spam detection (too many messages in short time)');
+  }
+
+  // Check excessive mentions
+  if (config.automod.antiMention && hasExcessiveMentions(content, config.automod.maxMentions)) {
+    violations.push(`Excessive mentions (more than ${config.automod.maxMentions})`);
+  }
+
+  // Check excessive caps
+  if (config.automod.antiCaps && hasExcessiveCaps(content, config.automod.capsPercentage)) {
+    violations.push('Excessive capital letters');
+  }
+
+  // Check invite links
+  if (config.automod.antiInvites && containsInviteLinks(content)) {
+    violations.push('Discord invite links');
+  }
+
+  if (violations.length > 0) {
+    await handleModAction(message, violations.join(', '), config);
+  }
+}
 
 // Event Handlers
 client.once('ready', async (c) => {
@@ -884,9 +1453,50 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// Message-based commands (fallback)
+// Button interactions
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isButton()) return;
+
+  const config = getServerConfig(interaction.guild.id);
+
+  if (interaction.customId === 'agree_rules') {
+    try {
+      await interaction.reply({ 
+        content: '✅ Thank you for agreeing to the server rules! Enjoy your stay!', 
+        ephemeral: true 
+      });
+    } catch (error) {
+      console.error('Error handling rules agreement:', error);
+    }
+  }
+
+  if (interaction.customId === 'start_verification') {
+    if (!config.verification.enabled) return;
+
+    try {
+      const role = interaction.guild.roles.cache.get(config.verification.role);
+      if (role && interaction.member) {
+        await interaction.member.roles.add(role);
+        await interaction.reply({ 
+          content: '✅ Verification successful! You now have access to the server.', 
+          ephemeral: true 
+        });
+      }
+    } catch (error) {
+      await interaction.reply({ 
+        content: '❌ Verification failed. Please contact an administrator.', 
+        ephemeral: true 
+      });
+    }
+  }
+});
+
+// Message-based commands and auto-mod
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
+
+  // Run automod checks
+  await handleAutoMod(message);
 
   // Basic ping command
   if (message.content === '!ping') {

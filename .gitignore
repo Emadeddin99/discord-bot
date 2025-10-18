@@ -1,95 +1,80 @@
-# Dependencies
+# ========================================
+# DEPENDENCIES
+# ========================================
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 package-lock.json
 yarn.lock
+.pnpm-debug.log*
 
-# Environment variables
+# ========================================
+# ENVIRONMENT VARIABLES & SECRETS
+# ========================================
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+*.env
 
-# Logs
-logs
+# ========================================
+# LOGS
+# ========================================
+logs/
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-lerna-debug.log*
-.pnpm-debug.log*
-
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
-
-# Coverage directory used by tools like istanbul
-coverage/
-.nyc_output
-
-# Optional npm cache directory
-.npm
-
-# Optional eslint cache
+.npm/
 .eslintcache
-
-# Optional REPL history
 .node_repl_history
 
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
-.yarn-integrity
-
-# dotenv environment variables file
-.env
-.env.test
-
-# parcel-bundler cache (https://parceljs.org/)
-.cache
-.parcel-cache
-
-# Next.js build output
-.next
-
-# Nuxt.js build / generate output
-.nuxt
-dist
-
-# Gatsby files
+# ========================================
+# RUNTIME & CACHE
+# ========================================
 .cache/
-public
+.parcel-cache/
+.nuxt/
+.next/
+dist/
+build/
+.coverage/
+.nyc_output/
 
-# Vuepress build output
-.vuepress/dist
-
-# Serverless directories
+# ========================================
+# SERVERLESS & DEPLOYMENT
+# ========================================
 .serverless/
 
-# FuseBox cache
-.fusebox/
-
-# DynamoDB Local files
-.dynamodb/
-
-# TernJS port file
-.tern-port
-
-# Stores VSCode versions used for testing VSCode extensions
-.vscode-test
-
-# System files
+# ========================================
+# SYSTEM FILES
+# ========================================
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
 
-# Config files (can be committed if needed)
+# ========================================
+# IDE & EDITOR
+# ========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-*
+
+# ========================================
+# BOT SPECIFIC
+# ========================================
+# Bot configuration (contains sensitive server data)
 config.json
+config.backup.json
+
+# Voice cache files
+voice_cache/
+temp_audio/
 
 # Backup files
 *.backup
@@ -98,19 +83,19 @@ config.json
 # Temporary files
 *.tmp
 *.temp
+temp/
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+# ========================================
+# PACKAGE MANAGER SPECIFIC
+# ========================================
+# npm
+.npm
 
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotellite-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Yarn
+.yarn/cache
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# pnpm
+node_modules/.pnpm-debug.log*

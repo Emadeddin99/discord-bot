@@ -1,11 +1,31 @@
 require('dotenv').config();
 const { REST, Routes } = require('discord.js');
 
-console.log('🔧 Global Command Deployer Starting...');
-console.log('Environment Check:');
-console.log('DISCORD_BOT_TOKEN:', process.env.DISCORD_BOT_TOKEN ? '***' : 'NOT SET');
-console.log('CLIENT_ID:', process.env.CLIENT_ID || 'NOT SET');
+console.log('🔧 Guild Command Deployer Starting...');
 
+const token = process.env.DISCORD_BOT_TOKEN;
+const clientId = process.env.CLIENT_ID;
+const guildId = process.env.GUILD_ID;
+
+if (!token) {
+  console.error('❌ ERROR: DISCORD_BOT_TOKEN is not set in environment variables!');
+  process.exit(1);
+}
+
+if (!clientId) {
+  console.error('❌ ERROR: CLIENT_ID is not set in environment variables!');
+  process.exit(1);
+}
+
+if (!guildId) {
+  console.error('❌ ERROR: GUILD_ID is not set in environment variables!');
+  console.log('💡 Add GUILD_ID=your_server_id to your .env file for testing');
+  process.exit(1);
+}
+
+const rest = new REST({ version: '10' }).setToken(token);
+
+// Same commands as global deployment
 const commands = [
   {
     name: 'ping',
@@ -218,81 +238,35 @@ const commands = [
   }
 ];
 
-const token = process.env.DISCORD_BOT_TOKEN;
-const clientId = process.env.CLIENT_ID;
-
-if (!token) {
-  console.error('❌ ERROR: DISCORD_BOT_TOKEN is not set in environment variables!');
-  console.log('💡 Please set your Discord bot token in the .env file');
-  console.log('💡 Example: DISCORD_BOT_TOKEN=your_bot_token_here');
-  process.exit(1);
-}
-
-if (!clientId) {
-  console.error('❌ ERROR: CLIENT_ID is not set in environment variables!');
-  console.log('💡 Please set your Discord client ID in the .env file');
-  console.log('💡 Example: CLIENT_ID=your_client_id_here');
-  process.exit(1);
-}
-
-const rest = new REST({ version: '10' }).setToken(token);
-
-async function deployCommands() {
+async function deployGuildCommands() {
   try {
-    console.log('🔄 Started refreshing global application (/) commands.');
-
+    console.log(`🔄 Deploying commands to guild: ${guildId}`);
+    
     const data = await rest.put(
-      Routes.applicationCommands(clientId),
+      Routes.applicationGuildCommands(clientId, guildId),
       { body: commands }
     );
 
-    console.log(`✅ Successfully reloaded ${data.length} global application (/) commands.`);
-    console.log('📝 Commands deployed globally:');
+    console.log(`✅ Successfully deployed ${data.length} commands to guild.`);
+    console.log('📝 Guild commands deployed:');
     data.forEach(cmd => {
       console.log(`   - /${cmd.name}: ${cmd.description}`);
     });
     
-    console.log('\n🎉 Your bot commands are now live globally!');
-    console.log('⏰ It may take up to 1 hour to appear in all servers.');
-    console.log('🔧 New features available:');
-    console.log('   - Advanced Auto-Moderation (Arabic & English)');
-    console.log('   - Interactive Rules System');
-    console.log('   - Verification System');
-    console.log('   - Enhanced Welcome/Goodbye Messages');
-    console.log('   - Professional Moderation Logs');
+    console.log('\n🎉 Guild commands deployed successfully!');
+    console.log('🚀 These commands will appear immediately in your test server.');
     
   } catch (error) {
-    console.error('❌ Error deploying global commands:', error.message);
+    console.error('❌ Error deploying guild commands:', error.message);
     
-    // Helpful error messages
     if (error.code === 50001) {
-      console.log('💡 Missing Access: Make sure your bot is invited to the server with applications.commands scope');
-      console.log('💡 Invite URL should include: applications.commands bot permission');
+      console.log('💡 Missing Access: Bot not in the specified guild');
     } else if (error.code === 50013) {
-      console.log('💡 Missing Permissions: Check your bot has the necessary permissions');
-    } else if (error.code === 40060) {
-      console.log('💡 Too many application commands: You have reached the limit of 100 commands');
-    } else if (error.code === 40041) {
-      console.log('💡 Invalid OAuth2 application: Check your CLIENT_ID is correct');
-    } else if (error.code === 401) {
-      console.log('💡 Invalid token: Check your DISCORD_BOT_TOKEN is correct');
-    } else if (error.code === 403) {
-      console.log('💡 Forbidden: Bot may not have access or is in too many servers');
+      console.log('💡 Missing Permissions: Bot lacks permissions in the guild');
+    } else if (error.code === 10004) {
+      console.log('💡 Unknown Guild: Check your GUILD_ID is correct');
     }
-    
-    process.exit(1);
   }
 }
 
-// Handle process events
-process.on('unhandledRejection', (error) => {
-  console.error('Unhandled promise rejection:', error);
-  process.exit(1);
-});
-
-process.on('uncaughtException', (error) => {
-  console.error('Uncaught exception:', error);
-  process.exit(1);
-});
-
-deployCommands();
+deployGuildCommands();
