@@ -11,26 +11,17 @@ console.log('GUILD_ID:', process.env.GUILD_ID ? '✅ Set' : '❌ NOT SET');
 const commands = [
   // ⚙️ Setup Commands
   {
-    name: 'setup-automated',
-    description: 'Set up all automated systems with one command',
+    name: 'setup-welcome',
+    description: 'Set up welcome and goodbye system',
     options: [
       {
-        name: 'level_channel', type: 7, description: 'Channel for level-up notifications', required: true, channel_types: [0]
+        name: 'welcome_channel', type: 7, description: 'Channel for welcome messages', required: true, channel_types: [0]
       },
       {
-        name: 'music_channel', type: 7, description: 'Channel for music commands', required: false, channel_types: [0]
+        name: 'goodbye_channel', type: 7, description: 'Channel for goodbye messages', required: false, channel_types: [0]
       },
       {
-        name: 'log_channel', type: 7, description: 'Channel for moderation logs', required: false, channel_types: [0]
-      },
-      {
-        name: 'new_role', type: 8, description: 'Role for new members (Level 1)', required: false
-      },
-      {
-        name: 'member_role', type: 8, description: 'Role for members (Level 10)', required: false
-      },
-      {
-        name: 'shadow_role', type: 8, description: 'Role for shadows (Level 25)', required: false
+        name: 'mod_channel', type: 7, description: 'Channel for moderation logs', required: false, channel_types: [0]
       }
     ]
   },
@@ -98,32 +89,13 @@ const commands = [
     ]
   },
   {
-    name: 'setup-verification',
-    description: 'Set up verification system for new members',
-    options: [
-      { name: 'channel', type: 7, description: 'Channel for verification', required: true, channel_types: [0] },
-      { name: 'role', type: 8, description: 'Role to assign after verification', required: true }
-    ]
-  },
-  {
-    name: 'rules',
-    description: 'Manage server rules',
+    name: 'setmodchannel',
+    description: 'Set the moderation log channel',
     options: [
       {
-        name: 'action', type: 3, description: 'Action to perform', required: true,
-        choices: [
-          { name: 'Add', value: 'add' }, { name: 'Remove', value: 'remove' }, { name: 'List', value: 'list' },
-          { name: 'Set Channel', value: 'setchannel' }, { name: 'Clear', value: 'clear' }, { name: 'Post', value: 'post' }
-        ]
-      },
-      { name: 'text', type: 3, description: 'Rule text (for add)', required: false },
-      { name: 'index', type: 4, description: 'Rule index (for remove)', required: false },
-      { name: 'channel', type: 7, description: 'Channel to post rules', required: false, channel_types: [0] }
+        name: 'channel', type: 7, description: 'The channel to send moderation logs to', required: true, channel_types: [0]
+      }
     ]
-  },
-  {
-    name: 'config',
-    description: 'View the current bot configuration'
   }
 ];
 
@@ -157,14 +129,14 @@ async function deployGuildCommands() {
     console.log(`🎯 Commands available in server: ${guildId}`);
     
     console.log('\n⚡ Admin Commands Available:');
-    console.log('   ⚙️  Setup: /setup-automated');
+    console.log('   ⚙️  Setup: /setup-welcome');
     console.log('   🛡️  Moderation: /warn, /clearwarnings, /clear, /slowmode');
-    console.log('   📋 System: /setwelcome, /setgoodbye, /setup-verification, /rules, /config');
+    console.log('   📋 System: /setwelcome, /setgoodbye, /setmodchannel');
     
     console.log('\n💡 Usage Tips:');
     console.log('   • Commands appear INSTANTLY (no 1-hour wait)');
     console.log('   • Perfect for testing and configuration');
-    console.log('   • Use /setup-automated to configure everything at once');
+    console.log('   • Use /setup-welcome to configure everything at once');
     
     return true;
 

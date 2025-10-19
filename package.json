@@ -1,7 +1,7 @@
 {
   "name": "discord-bot",
   "version": "3.0.0",
-  "description": "A comprehensive Discord bot with music, moderation, auto-moderation, welcome system, and utility commands",
+  "description": "A comprehensive Discord bot with moderation, auto-moderation, welcome system, and utility commands",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
@@ -17,21 +17,13 @@
   "keywords": [
     "discord",
     "bot",
-    "music",
     "moderation",
     "automod",
     "welcome",
     "utility",
     "automation",
-    "voice",
     "slash-commands",
-    "discord.js",
-    "youtube",
-    "verification",
-    "rules-system",
-    "multi-language",
-    "render",
-    "deployment"
+    "discord.js"
   ],
   "author": {
     "name": "Your Name",
@@ -48,14 +40,10 @@
   },
   "homepage": "https://github.com/yourusername/discord-bot#readme",
   "dependencies": {
-    "@discordjs/voice": "^0.16.1",
     "discord.js": "^14.14.1",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
-    "libsodium-wrappers": "^0.7.13",
-    "opusscript": "^0.0.8",
-    "quick.db": "^9.1.7",
-    "ytdl-core": "^4.11.5"
+    "quick.db": "^9.1.7"
   },
   "devDependencies": {
     "eslint": "^8.57.0",

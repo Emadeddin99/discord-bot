@@ -1,13 +1,10 @@
 // Load environment variables FIRST
 require('dotenv').config();
 
-const { Client, GatewayIntentBits, EmbedBuilder, ActivityType, Collection, PermissionsBitField, REST, Routes, ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, entersState, VoiceConnectionStatus, StreamType, NoSubscriberBehavior } = require('@discordjs/voice');
+const { Client, GatewayIntentBits, EmbedBuilder, ActivityType, Collection, PermissionsBitField, REST, Routes, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const fs = require('fs').promises;
 const path = require('path');
 const express = require('express');
-const ytdl = require('ytdl-core');
-const quickdb = require('quick.db');
 
 // Initialize Express for health checks
 const app = express();
@@ -24,8 +21,6 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.GuildModeration,
-    GatewayIntentBits.GuildMessageReactions,
   ]
 });
 
@@ -44,18 +39,23 @@ client.commands = new Collection();
 const configPath = path.join(__dirname, 'config.json');
 let serverConfigs = {};
 
-// Voice connection storage
-const voiceConnections = new Map();
-const audioPlayers = new Map();
-const musicQueues = new Map();
-
-// Auto-moderation storage
-const autoModEnabled = new Map();
-const bannedWords = new Map();
+// User warnings storage
 const userWarnings = new Map();
 
-// Rules system storage
-const serverRules = new Map();
+// Simple Banned Words Lists
+const bannedWords = {
+  english: [
+    'fuck', 'shit', 'bitch', 'asshole', 'dick', 'pussy', 'cunt', 'whore', 'slut',
+    'bastard', 'motherfucker', 'bullshit', 'cock', 'dickhead', 'fag', 'faggot',
+    'retard', 'nigger', 'nigga', 'chink', 'spic', 'kike', 'cocksucker'
+  ],
+  arabic: [
+    'kos', 'kos omak', 'sharmouta', 'ahbal', 'ibn el sharmouta', 'kes ekhtak',
+    'ya ibn el', 'ya bet el', 'ya kalb', 'ya harami', 'kesok', 'sharmoot',
+    'sharmoota', '7aram', '7arami', '3ars', 'ibn el kalb', 'ahbal', 'ghabi',
+    '7mar', 'kelb', 'ayre', 'manyak', 'nik', 'nerd'
+  ]
+};
 
 // Load configuration
 async function loadConfig() {
@@ -64,28 +64,9 @@ async function loadConfig() {
     const savedData = JSON.parse(data);
     serverConfigs = savedData.serverConfigs || {};
     
-    // Load auto-mod data
-    if (savedData.autoModEnabled) {
-      Object.keys(savedData.autoModEnabled).forEach(guildId => {
-        autoModEnabled.set(guildId, savedData.autoModEnabled[guildId]);
-      });
-    }
-    
-    if (savedData.bannedWords) {
-      Object.keys(savedData.bannedWords).forEach(guildId => {
-        bannedWords.set(guildId, savedData.bannedWords[guildId]);
-      });
-    }
-    
     if (savedData.userWarnings) {
       Object.keys(savedData.userWarnings).forEach(guildId => {
         userWarnings.set(guildId, savedData.userWarnings[guildId]);
-      });
-    }
-    
-    if (savedData.serverRules) {
-      Object.keys(savedData.serverRules).forEach(guildId => {
-        serverRules.set(guildId, savedData.serverRules[guildId]);
       });
     }
     
@@ -101,10 +82,7 @@ async function saveConfig() {
   try {
     const dataToSave = {
       serverConfigs,
-      autoModEnabled: Object.fromEntries(autoModEnabled),
-      bannedWords: Object.fromEntries(bannedWords),
-      userWarnings: Object.fromEntries(userWarnings),
-      serverRules: Object.fromEntries(serverRules)
+      userWarnings: Object.fromEntries(userWarnings)
     };
     
     await fs.writeFile(configPath, JSON.stringify(dataToSave, null, 2));
@@ -126,504 +104,104 @@ function getServerConfig(guildId) {
       enableWelcome: true,
       enableGoodbye: true,
       enableDMs: true,
-      music: {
-        enabled: true,
-        textChannel: null,
-        defaultVolume: 50
-      },
       logChannel: null,
       verificationChannel: null,
       verificationRole: null,
-      // Auto-mod settings - AUTO ENABLED BY DEFAULT
-      autoModSettings: {
-        enabled: true,  // AUTO-ENABLED
-        deleteMessages: true,
-        warnUsers: true,
-        logActions: true,
-        checkArabic: true,
-        checkEnglish: true,
-        maxWarnings: 3,
-        muteDuration: 10 // minutes
-      }
+      modChannel: null
     };
   }
   return serverConfigs[guildId];
 }
 
-// Enhanced Bilingual Text Monitoring System with Typo Detection
-class BilingualAutoMod {
-  // Comprehensive English banned words with common variations
-  static englishBannedWords = [
-    // Profanity - Base words
-    'fuck', 'shit', 'bitch', 'asshole', 'dick', 'pussy', 'cunt', 'whore', 'slut',
-    'bastard', 'motherfucker', 'bullshit', 'damn', 'hell', 'cock', 'dickhead',
-    'fag', 'faggot', 'retard', 'nigger', 'nigga', 'chink', 'spic', 'kike', 'wetback',
-    'cocksucker', 'douchebag', 'douche', 'scumbag', 'shithead', 'dipshit', 'shitface',
-    'asswipe', 'asshat', 'arsehole', 'wanker', 'twat', 'bellend', 'prick', 'dildo',
-    
-    // Hate speech
-    'kill all', 'death to', 'exterminate', 'genocide', 'gas the', 'holocaust',
-    'white power', 'black power', 'hitler', 'nazi', 'kkk', 'racist', 'sexist',
-    'homophobic', 'transphobic', 'islamophobic', 'anti semitic', 'anti-semitic',
-    
-    // Threats
-    'i will kill', 'i will murder', 'i will hurt', 'i will beat', 'i will shoot',
-    'kill you', 'murder you', 'hurt you', 'beat you', 'shoot you', 'stab you',
-    'attack you', 'fight you', 'destroy you', 'eliminate you',
-    
-    // Self-harm
-    'i want to die', 'i will kill myself', 'suicide', 'cut myself', 'end my life',
-    'want to die', 'kill myself', 'commit suicide', 'end it all', 'self harm',
-    'cutting', 'self injury', 'suicidal', 'overdose'
-  ];
-
-  // Comprehensive Arabic banned words with variations (transliterated)
-  static arabicBannedWords = [
-    // Profanity
-    'kos', 'kos omak', 'sharmouta', 'ahbal', 'ibn el sharmouta', 'kes ekhtak',
-    'ya ibn el', 'ya bet el', 'ya kalb', 'ya harami', 'ya wad', 'ya 3ars',
-    'kosok', 'kosk', 'sharmoot', 'sharmoota', '7aram', '7arami', '3ars', '3ar',
-    'ibn el kalb', 'bent el kalb', 'omak', 'abook', 'ahbal', 'ghabi', 'mahbol',
-    'majnoon', 'magnoon', 'hayawan', '7mar', 'kelb', '2alb',
-    
-    // Religious insults
-    'ya ibn el kalb', 'allah yakhodak', 'ya kafir', 'ya murtad', 'rasool el shaytan',
-    'nabi el shaytan', 'religion el shaytan', 'deenak', 'allah', 'islam', 'muslim',
-    'christian', 'yehudi', 'bouddha',
-    
-    // Threats
-    'hatktlk', 'hamotak', 'ha2tlak', 'harag', 'haragek', 'moot', 'mawt', 'a2telak',
-    'a2telk', 'hatk', 'hamot', 'harag', '7arag', '7aragek', 'darb', 'darab',
-    'sa7ab', 'se7ab', 'ye7keek', 'ye7kiik',
-    
-    // Sexual content
-    'ayre', 'manyak', 'mnayek', 'nerd', 'nrd', 'nrdy', 'manyake', 'manyak',
-    'mounik', 'nik', 'nyk', 'sexy', 'sex', 'make love', 'sleep with',
-    'sexual', 'intercourse', 'porn', 'porno'
-  ];
-
-  // Common character substitutions for typo detection
-  static characterSubstitutions = {
-    'a': ['4', '@', 'á', 'à', 'â', 'ä'],
-    'b': ['8', '6', '13'],
-    'c': ['(', '[', '<', '©'],
-    'e': ['3', '&', 'é', 'è', 'ê', 'ë'],
-    'g': ['9', '6'],
-    'i': ['1', '!', '|', 'í', 'ì', 'î', 'ï'],
-    'l': ['1', '|', '7'],
-    'o': ['0', '()', 'ó', 'ò', 'ô', 'ö'],
-    's': ['5', '$', 'z'],
-    't': ['7', '+'],
-    'z': ['2', 's'],
-    '0': ['o'],
-    '1': ['i', 'l'],
-    '3': ['e'],
-    '4': ['a'],
-    '5': ['s'],
-    '7': ['t', 'l'],
-    '8': ['b'],
-    '9': ['g']
-  };
-
-  // Arabic character ranges for detection
-  static arabicRanges = [
-    [0x0600, 0x06FF], // Arabic
-    [0x0750, 0x077F], // Arabic Supplement
-    [0x08A0, 0x08FF], // Arabic Extended-A
-    [0xFB50, 0xFDFF], // Arabic Presentation Forms-A
-    [0xFE70, 0xFEFF]  // Arabic Presentation Forms-B
-  ];
-
-  // Normalize text for better detection (handles leetspeak and common substitutions)
-  static normalizeText(text) {
-    let normalized = text.toLowerCase();
-    
-    // Replace common character substitutions
-    Object.keys(this.characterSubstitutions).forEach(normalChar => {
-      this.characterSubstitutions[normalChar].forEach(subChar => {
-        const regex = new RegExp(subChar, 'gi');
-        normalized = normalized.replace(regex, normalChar);
-      });
-    });
-    
-    // Remove repeated characters (e.g., "fuuuck" -> "fuck")
-    normalized = normalized.replace(/(.)\1{2,}/g, '$1$1');
-    
-    // Remove extra spaces and special characters
-    normalized = normalized.replace(/[^\w\s]/g, '');
-    normalized = normalized.replace(/\s+/g, ' ');
-    
-    return normalized.trim();
-  }
-
-  // Generate typo variations for a word
-  static generateTypoVariations(word) {
-    const variations = new Set([word]);
-    
-    // Common typo patterns
-    const typoPatterns = [
-      // Double letters
-      (w) => w.replace(/([a-z])\1/g, '$1'),
-      // Missing vowels
-      (w) => w.replace(/[aeiou]/g, ''),
-      // Character swaps
-      (w) => {
-        if (w.length > 1) {
-          const chars = w.split('');
-          for (let i = 0; i < chars.length - 1; i++) {
-            const swapped = [...chars];
-            [swapped[i], swapped[i + 1]] = [swapped[i + 1], swapped[i]];
-            variations.add(swapped.join(''));
-          }
-        }
-        return w;
-      }
-    ];
-    
-    typoPatterns.forEach(pattern => {
-      variations.add(pattern(word));
-    });
-    
-    return Array.from(variations);
-  }
-
-  // Check if text contains Arabic characters
-  static containsArabic(text) {
-    for (let char of text) {
-      const code = char.charCodeAt(0);
-      for (let [start, end] of this.arabicRanges) {
-        if (code >= start && code <= end) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  // Check for banned content in both languages with typo detection
-  static checkMessage(content, guildId) {
-    const config = getServerConfig(guildId);
-    if (!config.autoModSettings.enabled) return null;
-
+// Simple Auto-Mod System
+class SimpleAutoMod {
+  static checkMessage(content) {
     const lowerContent = content.toLowerCase();
-    const normalizedContent = this.normalizeText(content);
     
-    const results = {
-      violations: [],
-      language: 'none',
-      severity: 'low',
-      originalWord: '',
-      detectedVariation: ''
-    };
-
-    // Check English content if enabled
-    if (config.autoModSettings.checkEnglish) {
-      for (const baseWord of this.englishBannedWords) {
-        // Check exact match
-        if (lowerContent.includes(baseWord) || normalizedContent.includes(baseWord)) {
-          results.violations.push({
-            word: baseWord,
-            language: 'english',
-            type: this.getViolationType(baseWord),
-            variation: 'exact'
-          });
-          continue;
-        }
-
-        // Check with typo variations
-        const variations = this.generateTypoVariations(baseWord);
-        for (const variation of variations) {
-          if (variation !== baseWord && 
-              (lowerContent.includes(variation) || normalizedContent.includes(variation))) {
-            results.violations.push({
-              word: baseWord,
-              language: 'english',
-              type: this.getViolationType(baseWord),
-              variation: variation,
-              isTypo: true
-            });
-            break;
-          }
-        }
-
-        // Check with character substitutions (leetspeak)
-        if (this.checkLeetspeak(lowerContent, baseWord)) {
-          results.violations.push({
-            word: baseWord,
-            language: 'english',
-            type: this.getViolationType(baseWord),
-            variation: 'leetspeak',
-            isTypo: true
-          });
-        }
+    // Check English banned words
+    for (const word of bannedWords.english) {
+      if (lowerContent.includes(word)) {
+        return { language: 'english', word: word };
       }
     }
-
-    // Check Arabic content if enabled
-    if (config.autoModSettings.checkArabic) {
-      // Check for Arabic characters
-      if (this.containsArabic(content)) {
-        // Check transliterated Arabic banned words
-        for (const baseWord of this.arabicBannedWords) {
-          if (lowerContent.includes(baseWord) || normalizedContent.includes(baseWord)) {
-            results.violations.push({
-              word: baseWord,
-              language: 'arabic',
-              type: this.getViolationType(baseWord),
-              variation: 'exact'
-            });
-            continue;
-          }
-
-          // Check Arabic variations
-          const variations = this.generateTypoVariations(baseWord);
-          for (const variation of variations) {
-            if (variation !== baseWord && 
-                (lowerContent.includes(variation) || normalizedContent.includes(variation))) {
-              results.violations.push({
-                word: baseWord,
-                language: 'arabic',
-                type: this.getViolationType(baseWord),
-                variation: variation,
-                isTypo: true
-              });
-              break;
-            }
-          }
-        }
-
-        // Additional Arabic content checks
-        if (this.checkArabicSeverity(content)) {
-          results.violations.push({
-            word: 'arabic_content',
-            language: 'arabic',
-            type: 'inappropriate',
-            variation: 'pattern'
-          });
-        }
+    
+    // Check Arabic banned words
+    for (const word of bannedWords.arabic) {
+      if (lowerContent.includes(word)) {
+        return { language: 'arabic', word: word };
       }
     }
-
-    // Determine overall severity
-    if (results.violations.length > 0) {
-      results.severity = this.determineSeverity(results.violations);
-      results.language = results.violations[0].language;
-      
-      // Store detection details
-      const firstViolation = results.violations[0];
-      results.originalWord = firstViolation.word;
-      results.detectedVariation = firstViolation.variation;
-      
-      return results;
-    }
-
+    
     return null;
   }
 
-  // Check for leetspeak variations
-  static checkLeetspeak(content, word) {
-    const leetPatterns = this.generateLeetPatterns(word);
-    return leetPatterns.some(pattern => {
-      const regex = new RegExp(pattern, 'i');
-      return regex.test(content);
-    });
-  }
-
-  // Generate leetspeak patterns for a word
-  static generateLeetPatterns(word) {
-    const patterns = [];
-    const chars = word.split('');
-    
-    // Generate pattern with common substitutions
-    let pattern = '';
-    chars.forEach(char => {
-      if (this.characterSubstitutions[char]) {
-        pattern += `[${char}${this.characterSubstitutions[char].join('')}]`;
-      } else {
-        pattern += char;
-      }
-    });
-    patterns.push(pattern);
-    
-    // Additional common leetspeak patterns
-    if (word.includes('a')) patterns.push(word.replace(/a/gi, '[a4@]'));
-    if (word.includes('e')) patterns.push(word.replace(/e/gi, '[e3]'));
-    if (word.includes('i')) patterns.push(word.replace(/i/gi, '[i1!]'));
-    if (word.includes('o')) patterns.push(word.replace(/o/gi, '[o0]'));
-    if (word.includes('s')) patterns.push(word.replace(/s/gi, '[s5$]'));
-    if (word.includes('t')) patterns.push(word.replace(/t/gi, '[t7]'));
-    
-    return patterns;
-  }
-
-  // Determine violation type
-  static getViolationType(word) {
-    const profanity = [
-      'fuck', 'shit', 'bitch', 'asshole', 'dick', 'pussy', 'cunt', 'whore', 'slut',
-      'bastard', 'motherfucker', 'bullshit', 'damn', 'hell', 'cock', 'dickhead',
-      'kos', 'sharmouta', 'ahbal', 'kes', '3ars', 'ayre', 'manyak'
-    ];
-    
-    const hateSpeech = [
-      'nigger', 'nigga', 'chink', 'spic', 'kike', 'wetback', 'fag', 'faggot', 'retard',
-      'kill all', 'death to', 'exterminate', 'genocide', 'gas the', 'holocaust',
-      'kafir', 'murtad'
-    ];
-    
-    const threats = [
-      'kill', 'murder', 'hurt', 'beat', 'shoot', 'hamotak', 'ha2tlak', 'harag',
-      'moot', 'mawt', 'a2telak'
-    ];
-
-    const selfHarm = [
-      'suicide', 'kill myself', 'cut myself', 'end my life', 'want to die'
-    ];
-
-    if (hateSpeech.some(h => word.includes(h))) return 'hate_speech';
-    if (threats.some(t => word.includes(t))) return 'threat';
-    if (selfHarm.some(s => word.includes(s))) return 'self_harm';
-    if (profanity.some(p => word.includes(p))) return 'profanity';
-    return 'inappropriate';
-  }
-
-  // Check Arabic content severity
-  static checkArabicSeverity(content) {
-    const severePatterns = [
-      /كسمك/gi, /كس امك/gi, /شرموطة/gi, /احا/gi, /ابن/gi, /كلب/gi,
-      /حرامي/gi, /هاتك/gi, /هاجر/gi, /نيك/gi, /انيج/gi, /قحبة/gi,
-      /عاهر/gi, /زانية/gi, /دعارة/gi
-    ];
-
-    return severePatterns.some(pattern => pattern.test(content));
-  }
-
-  // Determine overall severity
-  static determineSeverity(violations) {
-    const hasHateSpeech = violations.some(v => v.type === 'hate_speech');
-    const hasThreats = violations.some(v => v.type === 'threat');
-    const hasSelfHarm = violations.some(v => v.type === 'self_harm');
-    
-    if (hasHateSpeech || hasThreats || hasSelfHarm) return 'high';
-    if (violations.some(v => v.type === 'profanity')) return 'medium';
-    return 'low';
-  }
-
-  // Get violation description in both languages
-  static getViolationDescription(violations, language) {
-    const types = violations.map(v => v.type);
-    
-    if (language === 'arabic') {
-      if (types.includes('hate_speech')) return 'كلام كراهية';
-      if (types.includes('threat')) return 'تهديدات';
-      if (types.includes('self_harm')) return 'إيذاء النفس';
-      if (types.includes('profanity')) return 'الفاظ نابية';
-      return 'محتوى غير لائق';
-    } else {
-      if (types.includes('hate_speech')) return 'Hate speech';
-      if (types.includes('threat')) return 'Threats';
-      if (types.includes('self_harm')) return 'Self-harm content';
-      if (types.includes('profanity')) return 'Profanity';
-      return 'Inappropriate content';
-    }
-  }
-
-  // Get typo detection message
-  static getTypoDetectionMessage(violation, language) {
-    if (!violation.isTypo) return '';
-    
-    if (language === 'arabic') {
-      return ` (تم الكشف عن تغيير في الكتابة: ${violation.variation})`;
-    } else {
-      return ` (detected variation: ${violation.variation})`;
-    }
-  }
-}
-
-// Enhanced Auto-Moderation System with Bilingual Support
-class AutoModSystem {
-  static isEnabled(guildId) {
-    const config = getServerConfig(guildId);
-    return config.autoModSettings.enabled || false;
-  }
-
-  static async handleViolation(message, violationResult) {
+  static async handleViolation(message, violation) {
     try {
-      const config = getServerConfig(message.guild.id);
+      const guildId = message.guild.id;
+      const userId = message.author.id;
       
-      // Debug logging
-      console.log(`🛡️ Auto-mod processing violation:`, {
-        user: message.author.tag,
-        content: message.content,
-        violations: violationResult.violations.length,
-        severity: violationResult.severity
-      });
-
-      // Delete the message if enabled
-      if (config.autoModSettings.deleteMessages) {
-        try {
-          await message.delete();
-          console.log(`✅ Deleted message from ${message.author.tag}`);
-        } catch (deleteError) {
-          console.log(`❌ Could not delete message: ${deleteError.message}`);
-        }
+      // Delete the message
+      try {
+        await message.delete();
+        console.log(`✅ Deleted inappropriate message from ${message.author.tag}`);
+      } catch (error) {
+        console.log(`❌ Could not delete message: ${error.message}`);
       }
 
-      // Add warning to user if enabled
-      if (config.autoModSettings.warnUsers) {
-        this.addWarning(message.guild.id, message.author.id, 
-          `Auto-mod violation: ${BilingualAutoMod.getViolationDescription(violationResult.violations, 'english')}`
-        );
-
-        // Send warning DM in appropriate language
-        await this.sendWarningDM(message, violationResult);
+      // Add warning
+      const warningCount = this.addWarning(guildId, userId, `Used banned ${violation.language} word: ${violation.word}`);
+      
+      // Send warning message
+      const warningMessage = `⚠️ **Warning ${warningCount}/6** - Please avoid using inappropriate language.\n**Violation:** ${violation.word} (${violation.language})\n**Next action:** ${7 - warningCount} more warnings will result in a timeout.`;
+      
+      try {
+        const warningReply = await message.channel.send(warningMessage);
+        // Auto-delete warning after 10 seconds
+        setTimeout(async () => {
+          try {
+            await warningReply.delete();
+          } catch (error) {
+            // Message already deleted
+          }
+        }, 10000);
+      } catch (error) {
+        console.log('Could not send warning message');
       }
 
-      // Log the action if enabled
-      if (config.autoModSettings.logActions && config.logChannel) {
-        await this.logViolation(message, violationResult);
+      // Send DM to user
+      try {
+        const dmEmbed = new EmbedBuilder()
+          .setTitle('⚠️ Auto-Moderation Warning')
+          .setColor(0xFFA500)
+          .setDescription(`You received a warning in **${message.guild.name}**`)
+          .addFields(
+            { name: 'Warning Count', value: `${warningCount}/6`, inline: true },
+            { name: 'Violation', value: `Used banned word: ${violation.word}`, inline: true },
+            { name: 'Language', value: violation.language.toUpperCase(), inline: true },
+            { name: 'Message', value: message.content.slice(0, 100) + '...', inline: false }
+          )
+          .setFooter({ text: 'Repeated violations will result in a timeout' })
+          .setTimestamp();
+
+        await message.author.send({ embeds: [dmEmbed] });
+      } catch (dmError) {
+        console.log(`Could not send DM to ${message.author.tag}`);
       }
 
-      console.log(`🛡️ Auto-mod action completed for ${message.author.tag}: ${violationResult.severity} severity`);
+      // Check if user should be timed out (6 warnings)
+      if (warningCount >= 6) {
+        await this.timeoutUser(message.member);
+        this.clearWarnings(guildId, userId);
+      }
+
+      // Log to mod channel if set
+      const config = getServerConfig(guildId);
+      if (config.modChannel) {
+        await this.logToModChannel(message, violation, warningCount);
+      }
 
     } catch (error) {
-      console.error('Error handling auto-mod violation:', error);
-    }
-  }
-
-  static async sendWarningDM(message, violationResult) {
-    try {
-      const violationDesc = BilingualAutoMod.getViolationDescription(violationResult.violations, 'english');
-      const arabicDesc = BilingualAutoMod.getViolationDescription(violationResult.violations, 'arabic');
-      
-      const typoMessage = BilingualAutoMod.getTypoDetectionMessage(violationResult.violations[0], 'english');
-      const arabicTypoMessage = BilingualAutoMod.getTypoDetectionMessage(violationResult.violations[0], 'arabic');
-      
-      const warningDM = new EmbedBuilder()
-        .setTitle('⚠️ Auto-Moderation Warning')
-        .setColor(0xFFA500)
-        .setDescription(`Your message in **${message.guild.name}** was flagged by our moderation system.`)
-        .addFields(
-          { name: 'Violation', value: violationDesc + typoMessage, inline: true },
-          { name: 'Severity', value: violationResult.severity.toUpperCase(), inline: true },
-          { name: 'Language', value: violationResult.language.toUpperCase(), inline: true },
-          { name: 'Message Preview', value: message.content.slice(0, 100) + '...', inline: false }
-        )
-        .setFooter({ text: 'Repeated violations may result in mutes or bans' })
-        .setTimestamp();
-
-      // Add Arabic description if relevant
-      if (violationResult.language === 'arabic') {
-        warningDM.addFields({
-          name: 'المخالفة',
-          value: arabicDesc + arabicTypoMessage,
-          inline: false
-        });
-      }
-
-      await message.author.send({ embeds: [warningDM] });
-      console.log(`📨 Sent warning DM to ${message.author.tag}`);
-    } catch (dmError) {
-      console.log(`❌ Could not send DM to ${message.author.tag}: ${dmError.message}`);
+      console.error('Error handling violation:', error);
     }
   }
 
@@ -664,12 +242,29 @@ class AutoModSystem {
     return false;
   }
 
-  static async logViolation(message, violationResult) {
+  static async timeoutUser(member) {
+    try {
+      // Timeout for 3 days
+      const timeoutDuration = 3 * 24 * 60 * 60 * 1000; // 3 days in milliseconds
+      
+      await member.timeout(timeoutDuration, 'Reached 6 auto-mod warnings');
+      
+      const timeoutMessage = `⏰ **${member.user.tag}** has been timed out for 3 days for reaching 6 warnings.`;
+      await member.guild.systemChannel?.send(timeoutMessage).catch(() => {});
+      
+      console.log(`⏰ Timed out ${member.user.tag} for 3 days`);
+      
+    } catch (error) {
+      console.error('Error timing out user:', error);
+    }
+  }
+
+  static async logToModChannel(message, violation, warningCount) {
     try {
       const config = getServerConfig(message.guild.id);
-      const logChannel = message.guild.channels.cache.get(config.logChannel);
+      const modChannel = message.guild.channels.cache.get(config.modChannel);
       
-      if (logChannel) {
+      if (modChannel) {
         const logEmbed = new EmbedBuilder()
           .setTitle('🛡️ Auto-Moderation Action')
           .setColor(0xFF0000)
@@ -677,538 +272,22 @@ class AutoModSystem {
           .addFields(
             { name: 'User', value: `${message.author.tag} (${message.author.id})`, inline: true },
             { name: 'Channel', value: `${message.channel}`, inline: true },
-            { name: 'Violation', value: BilingualAutoMod.getViolationDescription(violationResult.violations, 'english'), inline: true },
-            { name: 'Severity', value: violationResult.severity.toUpperCase(), inline: true },
-            { name: 'Language', value: violationResult.language.toUpperCase(), inline: true },
+            { name: 'Violation', value: `Banned ${violation.language} word: ${violation.word}`, inline: true },
+            { name: 'Warning Count', value: `${warningCount}/6`, inline: true },
             { name: 'Message Content', value: message.content.slice(0, 1024), inline: false }
           )
           .setTimestamp()
           .setFooter({ text: 'Auto-Moderation System' });
 
-        await logChannel.send({ embeds: [logEmbed] });
+        await modChannel.send({ embeds: [logEmbed] });
       }
     } catch (error) {
-      console.error('Error logging violation:', error);
+      console.error('Error logging to mod channel:', error);
     }
   }
 }
 
-// SIMPLIFIED YouTube URL validation - Much more reliable
-function validateYouTubeUrl(url) {
-  try {
-    // First, try ytdl's built-in validation (most reliable)
-    if (ytdl.validateURL(url)) {
-      return {
-        isValid: true,
-        videoId: extractVideoIdSimple(url),
-        normalizedUrl: url
-      };
-    }
-
-    // If that fails, try to extract video ID from common patterns
-    const videoId = extractVideoIdSimple(url);
-    if (videoId && videoId.length === 11) {
-      const normalizedUrl = `https://www.youtube.com/watch?v=${videoId}`;
-      // Test if this normalized URL works with ytdl
-      if (ytdl.validateURL(normalizedUrl)) {
-        return {
-          isValid: true,
-          videoId: videoId,
-          normalizedUrl: normalizedUrl
-        };
-      }
-    }
-
-    return { isValid: false };
-  } catch (error) {
-    console.error('URL validation error:', error);
-    return { isValid: false };
-  }
-}
-
-// Simple video ID extraction
-function extractVideoIdSimple(url) {
-  // Handle youtu.be short URLs
-  if (url.includes('youtu.be/')) {
-    const match = url.match(/youtu\.be\/([^&?\/]+)/);
-    return match ? match[1] : null;
-  }
-  
-  // Handle youtube.com URLs
-  if (url.includes('youtube.com')) {
-    const match = url.match(/[?&]v=([^&?\/]+)/);
-    return match ? match[1] : null;
-  }
-  
-  // Handle youtube.com/embed/ URLs
-  if (url.includes('youtube.com/embed/')) {
-    const match = url.match(/youtube\.com\/embed\/([^&?\/]+)/);
-    return match ? match[1] : null;
-  }
-  
-  return null;
-}
-
-// Enhanced Music System with Better Error Handling
-class MusicSystem {
-  static getQueue(guildId) {
-    if (!musicQueues.has(guildId)) {
-      musicQueues.set(guildId, {
-        songs: [],
-        isPlaying: false,
-        volume: 0.5,
-        loop: false,
-        nowPlaying: null,
-        connection: null
-      });
-    }
-    return musicQueues.get(guildId);
-  }
-
-  static async playSong(guildId) {
-    const queue = this.getQueue(guildId);
-    if (queue.songs.length === 0) {
-      queue.isPlaying = false;
-      queue.nowPlaying = null;
-      return;
-    }
-
-    const connection = voiceConnections.get(guildId);
-    const player = audioPlayers.get(guildId);
-
-    if (!connection || !player) {
-      queue.isPlaying = false;
-      queue.nowPlaying = null;
-      return;
-    }
-
-    try {
-      const song = queue.songs[0];
-      
-      // Validate URL
-      if (!ytdl.validateURL(song.url)) {
-        throw new Error('Invalid YouTube URL');
-      }
-
-      console.log(`🎵 Attempting to play: ${song.title}`);
-
-      // Use ytdl with better error handling and options (NO COOKIES NEEDED)
-      const stream = ytdl(song.url, {
-        filter: 'audioonly',
-        quality: 'lowestaudio',
-        highWaterMark: 1 << 25,
-        dlChunkSize: 0
-        // Removed cookie requirement - works for public videos
-      });
-
-      stream.on('error', (error) => {
-        console.error('Stream error:', error);
-        this.handlePlayError(guildId, error);
-      });
-
-      const resource = createAudioResource(stream, {
-        inputType: StreamType.Arbitrary,
-        inlineVolume: true
-      });
-
-      resource.volume.setVolume(queue.volume);
-      player.play(resource);
-      queue.nowPlaying = song;
-      queue.isPlaying = true;
-
-      console.log(`🎵 Now playing: ${song.title}`);
-
-    } catch (error) {
-      console.error('Error in playSong:', error);
-      this.handlePlayError(guildId, error);
-    }
-  }
-
-  static handlePlayError(guildId, error) {
-    const queue = this.getQueue(guildId);
-    console.error('Playback error:', error);
-    
-    // Remove the problematic song
-    if (queue.songs.length > 0) {
-      queue.songs.shift();
-    }
-    
-    // Try next song if available
-    if (queue.songs.length > 0) {
-      setTimeout(() => this.playSong(guildId), 2000);
-    } else {
-      queue.isPlaying = false;
-      queue.nowPlaying = null;
-    }
-  }
-
-  static async addToQueue(guildId, song) {
-    const queue = this.getQueue(guildId);
-    
-    if (ytdl.validateURL(song.url)) {
-      try {
-        const info = await ytdl.getInfo(song.url);
-        song.title = info.videoDetails.title;
-        song.duration = parseInt(info.videoDetails.lengthSeconds);
-        song.thumbnail = info.videoDetails.thumbnails[0]?.url;
-        song.durationFormatted = this.formatDuration(song.duration);
-      } catch (error) {
-        console.error('Error getting video info:', error);
-        song.title = 'Unknown Title';
-        song.duration = 0;
-        song.durationFormatted = 'Unknown';
-      }
-    } else {
-      song.title = 'Unknown Title';
-      song.duration = 0;
-      song.durationFormatted = 'Unknown';
-    }
-    
-    queue.songs.push(song);
-    const position = queue.songs.length;
-
-    if (!queue.isPlaying) {
-      setTimeout(() => this.playSong(guildId), 1000);
-    }
-
-    return position;
-  }
-
-  static formatDuration(seconds) {
-    if (!seconds || isNaN(seconds)) return 'Unknown';
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    
-    if (hours > 0) {
-      return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    } else {
-      return `${minutes}:${secs.toString().padStart(2, '0')}`;
-    }
-  }
-
-  static skipSong(guildId) {
-    const queue = this.getQueue(guildId);
-    const player = audioPlayers.get(guildId);
-    
-    if (player && queue.isPlaying) {
-      player.stop();
-      return true;
-    }
-    return false;
-  }
-
-  static stopMusic(guildId) {
-    const queue = this.getQueue(guildId);
-    const player = audioPlayers.get(guildId);
-    
-    queue.songs = [];
-    queue.isPlaying = false;
-    queue.nowPlaying = null;
-    
-    if (player) {
-      player.stop();
-    }
-    
-    return true;
-  }
-
-  static setVolume(guildId, volume) {
-    const queue = this.getQueue(guildId);
-    queue.volume = Math.max(0.1, Math.min(1, volume / 100));
-    return queue.volume;
-  }
-
-  static getNowPlaying(guildId) {
-    const queue = this.getQueue(guildId);
-    return queue.nowPlaying;
-  }
-
-  static getQueueList(guildId) {
-    const queue = this.getQueue(guildId);
-    return queue.songs;
-  }
-
-  static shuffleQueue(guildId) {
-    const queue = this.getQueue(guildId);
-    if (queue.songs.length > 0) {
-      const current = queue.songs.shift(); // Remove current playing
-      for (let i = queue.songs.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [queue.songs[i], queue.songs[j]] = [queue.songs[j], queue.songs[i]];
-      }
-      if (current) queue.songs.unshift(current); // Put current back
-      return true;
-    }
-    return false;
-  }
-}
-
-// Enhanced Voice Connection
-async function joinVoice(guildId, channelId) {
-  try {
-    const guild = client.guilds.cache.get(guildId);
-    if (!guild) return null;
-
-    const channel = guild.channels.cache.get(channelId);
-    if (!channel) return null;
-
-    // Leave existing connection if any
-    if (voiceConnections.has(guildId)) {
-      leaveVoice(guildId);
-    }
-
-    const connection = joinVoiceChannel({
-      channelId: channel.id,
-      guildId: guild.id,
-      adapterCreator: guild.voiceAdapterCreator,
-    });
-
-    const player = createAudioPlayer({
-      behaviors: {
-        noSubscriber: NoSubscriberBehavior.Pause,
-      },
-    });
-    
-    audioPlayers.set(guildId, player);
-
-    connection.on(VoiceConnectionStatus.Ready, () => {
-      console.log(`🔊 Joined voice channel: ${channel.name} in ${guild.name}`);
-      connection.subscribe(player);
-    });
-
-    connection.on(VoiceConnectionStatus.Disconnected, async () => {
-      try {
-        await Promise.race([
-          entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
-          entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
-        ]);
-      } catch (error) {
-        console.log(`🔊 Disconnected from voice channel in ${guild.name}`);
-        connection.destroy();
-        voiceConnections.delete(guildId);
-        audioPlayers.delete(guildId);
-        musicQueues.delete(guildId);
-      }
-    });
-
-    connection.on(VoiceConnectionStatus.Destroyed, () => {
-      console.log(`🔊 Connection destroyed in ${guild.name}`);
-      voiceConnections.delete(guildId);
-      audioPlayers.delete(guildId);
-      musicQueues.delete(guildId);
-    });
-
-    // Enhanced audio player event handling
-    player.on(AudioPlayerStatus.Idle, () => {
-      const queue = MusicSystem.getQueue(guildId);
-      if (queue.songs.length > 0) {
-        const finishedSong = queue.songs.shift();
-        console.log(`🎵 Finished playing: ${finishedSong?.title}`);
-        
-        if (queue.songs.length > 0) {
-          setTimeout(() => MusicSystem.playSong(guildId), 1000);
-        } else {
-          queue.isPlaying = false;
-          queue.nowPlaying = null;
-          console.log('🎵 Queue finished');
-        }
-      } else {
-        queue.isPlaying = false;
-        queue.nowPlaying = null;
-      }
-    });
-
-    player.on('error', error => {
-      console.error('🔊 Audio player error:', error);
-      const queue = MusicSystem.getQueue(guildId);
-      if (queue.songs.length > 0) {
-        queue.songs.shift(); // Remove problematic song
-        if (queue.songs.length > 0) {
-          setTimeout(() => MusicSystem.playSong(guildId), 2000);
-        }
-      }
-    });
-
-    voiceConnections.set(guildId, connection);
-    return connection;
-
-  } catch (error) {
-    console.error('❌ Error joining voice channel:', error);
-    return null;
-  }
-}
-
-function leaveVoice(guildId) {
-  const connection = voiceConnections.get(guildId);
-  const player = audioPlayers.get(guildId);
-
-  if (player) {
-    player.stop();
-    audioPlayers.delete(guildId);
-  }
-
-  if (connection) {
-    connection.destroy();
-    voiceConnections.delete(guildId);
-    musicQueues.delete(guildId);
-    console.log(`🔊 Left voice channel in guild ${guildId}`);
-    return true;
-  }
-
-  return false;
-}
-
-// Rules System
-class RulesSystem {
-  static getRules(guildId) {
-    if (!serverRules.has(guildId)) {
-      serverRules.set(guildId, []);
-    }
-    return serverRules.get(guildId);
-  }
-
-  static addRule(guildId, rule) {
-    const rules = this.getRules(guildId);
-    rules.push(rule);
-    saveConfig();
-    return rules.length;
-  }
-
-  static removeRule(guildId, index) {
-    const rules = this.getRules(guildId);
-    if (index >= 1 && index <= rules.length) {
-      rules.splice(index - 1, 1);
-      saveConfig();
-      return true;
-    }
-    return false;
-  }
-
-  static clearRules(guildId) {
-    serverRules.set(guildId, []);
-    saveConfig();
-    return true;
-  }
-
-  static async postRules(guildId, channel) {
-    const rules = this.getRules(guildId);
-    if (rules.length === 0) {
-      return false;
-    }
-
-    const rulesEmbed = new EmbedBuilder()
-      .setTitle('📜 Server Rules')
-      .setColor(0x0099FF)
-      .setDescription('Please read and follow these rules:')
-      .setTimestamp();
-
-    rules.forEach((rule, index) => {
-      rulesEmbed.addFields({
-        name: `Rule ${index + 1}`,
-        value: rule,
-        inline: false
-      });
-    });
-
-    rulesEmbed.addFields({
-      name: 'Agreement',
-      value: 'By remaining in this server, you agree to follow these rules.',
-      inline: false
-    });
-
-    await channel.send({ embeds: [rulesEmbed] });
-    return true;
-  }
-}
-
-// Verification System
-class VerificationSystem {
-  static async setupVerification(guildId, channelId, roleId) {
-    const config = getServerConfig(guildId);
-    config.verificationChannel = channelId;
-    config.verificationRole = roleId;
-    await saveConfig();
-
-    try {
-      const guild = client.guilds.cache.get(guildId);
-      const channel = guild.channels.cache.get(channelId);
-      const role = guild.roles.cache.get(roleId);
-
-      if (!channel || !role) {
-        return false;
-      }
-
-      const verifyEmbed = new EmbedBuilder()
-        .setTitle('✅ Verification Required')
-        .setColor(0x00FF00)
-        .setDescription('Click the button below to verify yourself and gain access to the server!')
-        .addFields(
-          { name: 'How to verify', value: 'Simply click the "Verify" button below and you will receive the verified role.', inline: false },
-          { name: 'Need help?', value: 'Contact server staff if you have any issues.', inline: false }
-        )
-        .setFooter({ text: 'Verification System' })
-        .setTimestamp();
-
-      const verifyButton = new ActionRowBuilder()
-        .addComponents(
-          new ButtonBuilder()
-            .setCustomId('verify_user')
-            .setLabel('Verify Me')
-            .setStyle(ButtonStyle.Success)
-            .setEmoji('✅')
-        );
-
-      await channel.send({
-        embeds: [verifyEmbed],
-        components: [verifyButton]
-      });
-
-      return true;
-    } catch (error) {
-      console.error('Error setting up verification:', error);
-      return false;
-    }
-  }
-
-  static async handleVerification(interaction) {
-    try {
-      const config = getServerConfig(interaction.guild.id);
-      if (!config.verificationRole) {
-        return await interaction.reply({
-          content: '❌ Verification system is not properly configured.',
-          flags: 64
-        });
-      }
-
-      const role = interaction.guild.roles.cache.get(config.verificationRole);
-      if (!role) {
-        return await interaction.reply({
-          content: '❌ Verification role not found.',
-          flags: 64
-        });
-      }
-
-      await interaction.member.roles.add(role);
-      
-      await interaction.reply({
-        content: '✅ You have been successfully verified! Welcome to the server!',
-        flags: 64
-      });
-
-      console.log(`✅ Verified user: ${interaction.user.tag} in ${interaction.guild.name}`);
-
-    } catch (error) {
-      console.error('Error handling verification:', error);
-      await interaction.reply({
-        content: '❌ An error occurred during verification. Please contact staff.',
-        flags: 64
-      });
-    }
-  }
-}
-
-// Command Definitions - Simplified without auto-mod configuration commands
+// Command Definitions
 const commands = [
   // 🎪 General Commands
   {
@@ -1242,11 +321,10 @@ const commands = [
         .setDescription('Here are all available commands!')
         .addFields(
           { name: '🎪 General', value: '`/ping`, `/help`, `/server-info`, `/user-info`, `/avatar`, `/membercount`', inline: false },
-          { name: '🎵 Music', value: '`/join`, `/leave`, `/play`, `/skip`, `/stop`, `/queue`, `/volume`, `/nowplaying`, `/shuffle`', inline: false },
-          { name: '🛡️ Moderation', value: '`/warn`, `/warnings`, `/clearwarnings`, `/clear`, `/slowmode`', inline: false },
-          { name: '⚙️ Admin', value: '`/setup-automated`, `/setwelcome`, `/setgoodbye`, `/setup-verification`, `/rules`, `/config`', inline: false }
+          { name: '🛡️ Moderation', value: '`/warn`, `/warnings`, `/clearwarnings`, `/clear`, `/slowmode`, `/timeout`', inline: false },
+          { name: '⚙️ Admin', value: '`/setup-welcome`, `/setwelcome`, `/setgoodbye`, `/setup-verification`, `/setmodchannel`', inline: false }
         )
-        .setFooter({ text: 'Use slash commands (/) to interact with the bot!' });
+        .setFooter({ text: 'Auto-moderation is always active for English and Arabic banned words' });
 
       await interaction.reply({ embeds: [embed] });
     }
@@ -1295,6 +373,8 @@ const commands = [
         return interaction.reply({ content: '❌ User not found in this server.', flags: 64 });
       }
 
+      const warnings = SimpleAutoMod.getWarnings(interaction.guild.id, user.id);
+
       const embed = new EmbedBuilder()
         .setTitle(`👤 ${user.tag}`)
         .setColor(0x3498DB)
@@ -1305,6 +385,7 @@ const commands = [
           { name: '📥 Joined Server', value: `<t:${Math.floor(member.joinedTimestamp / 1000)}:R>`, inline: true },
           { name: '🎭 Roles', value: `${member.roles.cache.size - 1}`, inline: true },
           { name: '🎨 Highest Role', value: `${member.roles.highest}`, inline: true },
+          { name: '⚠️ Warnings', value: `${warnings.length}/6`, inline: true },
           { name: '🤖 Bot', value: user.bot ? '✅ Yes' : '❌ No', inline: true }
         )
         .setFooter({ text: `User Info • ${user.tag}` })
@@ -1364,323 +445,7 @@ const commands = [
     }
   },
 
-  // 🎵 Music Commands
-  {
-    name: 'join',
-    description: 'Join a specific voice channel',
-    options: [
-      {
-        name: 'channel',
-        type: 7,
-        description: 'The voice channel to join',
-        required: true,
-        channel_types: [2]
-      }
-    ],
-    async execute(interaction) {
-      const channel = interaction.options.getChannel('channel');
-      
-      if (channel.type !== 2) {
-        return interaction.reply({ content: '❌ Please select a voice channel!', flags: 64 });
-      }
-
-      try {
-        const joined = await joinVoice(interaction.guild.id, channel.id);
-        if (joined) {
-          await interaction.reply(`✅ Joined ${channel}`);
-        } else {
-          await interaction.reply('❌ Failed to join voice channel!');
-        }
-      } catch (error) {
-        console.error('Error joining voice:', error);
-        await interaction.reply('❌ Failed to join voice channel!');
-      }
-    }
-  },
-  {
-    name: 'leave',
-    description: 'Leave the voice channel',
-    async execute(interaction) {
-      const left = leaveVoice(interaction.guild.id);
-      if (left) {
-        await interaction.reply('✅ Left the voice channel!');
-      } else {
-        await interaction.reply('❌ Not in a voice channel!');
-      }
-    }
-  },
-  {
-    name: 'play',
-    description: 'Play music from a YouTube URL',
-    options: [
-      {
-        name: 'url',
-        type: 3,
-        description: 'YouTube URL to play',
-        required: true
-      }
-    ],
-    async execute(interaction) {
-      await interaction.deferReply();
-      
-      const url = interaction.options.getString('url');
-      const voiceChannel = interaction.member.voice.channel;
-      
-      if (!voiceChannel) {
-        return interaction.editReply('❌ You need to be in a voice channel to play music!');
-      }
-
-      // Enhanced URL validation with better error messages
-      const urlValidation = validateYouTubeUrl(url);
-      
-      if (!urlValidation.isValid) {
-        const errorEmbed = new EmbedBuilder()
-          .setTitle('❌ Invalid YouTube URL')
-          .setColor(0xFF0000)
-          .setDescription('Please provide a valid YouTube URL.')
-          .addFields(
-            { 
-              name: '✅ Supported Formats', 
-              value: [
-                '• `https://www.youtube.com/watch?v=VIDEO_ID`',
-                '• `https://youtu.be/VIDEO_ID`',
-                '• `https://www.youtube.com/embed/VIDEO_ID`',
-                '• `https://m.youtube.com/watch?v=VIDEO_ID`'
-              ].join('\n'),
-              inline: false
-            },
-            {
-              name: '💡 How to get the URL',
-              value: [
-                '1. Go to the YouTube video',
-                '2. Click the "Share" button',
-                '3. Copy the URL (not the shortened link)',
-                '4. Paste it here'
-              ].join('\n'),
-              inline: false
-            },
-            {
-              name: '📝 Example',
-              value: '`/play url:https://www.youtube.com/watch?v=dQw4w9WgXcQ`',
-              inline: false
-            }
-          );
-
-        return interaction.editReply({ embeds: [errorEmbed] });
-      }
-
-      const finalUrl = urlValidation.normalizedUrl;
-
-      try {
-        // Get video info first with timeout
-        const info = await Promise.race([
-          ytdl.getInfo(finalUrl),
-          new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('YouTube request timeout')), 15000)
-          )
-        ]);
-
-        // Check if video is playable
-        if (info.videoDetails.isLive) {
-          return interaction.editReply('❌ Live streams are not supported!');
-        }
-
-        if (parseInt(info.videoDetails.lengthSeconds) > 36000) { // 10 hours
-          return interaction.editReply('❌ Videos longer than 10 hours are not supported!');
-        }
-
-        // Check if video is age restricted
-        if (info.videoDetails.age_restricted) {
-          return interaction.editReply('❌ Age-restricted videos cannot be played.');
-        }
-
-        const song = {
-          url: finalUrl,
-          title: info.videoDetails.title,
-          duration: parseInt(info.videoDetails.lengthSeconds),
-          thumbnail: info.videoDetails.thumbnails[0]?.url,
-          requestedBy: interaction.user.tag,
-          durationFormatted: MusicSystem.formatDuration(parseInt(info.videoDetails.lengthSeconds))
-        };
-
-        // Join voice channel if not connected
-        if (!voiceConnections.has(interaction.guild.id)) {
-          const joined = await joinVoice(interaction.guild.id, voiceChannel.id);
-          if (!joined) {
-            return interaction.editReply('❌ Failed to join voice channel! Please check my permissions.');
-          }
-          // Small delay to ensure connection is ready
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-
-        const position = await MusicSystem.addToQueue(interaction.guild.id, song);
-        
-        const embed = new EmbedBuilder()
-          .setTitle('🎵 Added to Queue')
-          .setColor(0x1DB954)
-          .setDescription(`**[${song.title}](${finalUrl})**`)
-          .addFields(
-            { name: 'Duration', value: song.durationFormatted, inline: true },
-            { name: 'Requested By', value: interaction.user.tag, inline: true },
-            { name: 'Position in Queue', value: `#${position}`, inline: true }
-          )
-          .setThumbnail(song.thumbnail)
-          .setTimestamp();
-
-        await interaction.editReply({ embeds: [embed] });
-
-      } catch (error) {
-        console.error('Error in play command:', error);
-        
-        let errorMessage = '❌ Failed to play the song. ';
-        
-        if (error.message.includes('timeout')) {
-          errorMessage = '❌ YouTube took too long to respond. Please try again in a moment.';
-        } else if (error.message.includes('Video unavailable')) {
-          errorMessage = '❌ This video is unavailable or has been removed.';
-        } else if (error.message.includes('Private video')) {
-          errorMessage = '❌ This video is private and cannot be accessed.';
-        } else if (error.message.includes('Sign in to confirm')) {
-          errorMessage = '❌ This video is age-restricted and cannot be played.';
-        } else if (error.message.includes('This video contains content from')) {
-          errorMessage = '❌ This video is blocked in your country or by copyright restrictions.';
-        } else if (error.message.includes('format is not available')) {
-          errorMessage = '❌ This video format is not available for playback.';
-        } else {
-          errorMessage = '❌ An unexpected error occurred. Please try a different URL or try again later.';
-        }
-        
-        const errorEmbed = new EmbedBuilder()
-          .setTitle('❌ Playback Error')
-          .setColor(0xFF0000)
-          .setDescription(errorMessage)
-          .addFields(
-            {
-              name: '💡 Tips',
-              value: [
-                '• Try a different YouTube video',
-                '• Make sure the URL is correct',
-                '• Check if the video is publicly available',
-                '• Try again in a few minutes'
-              ].join('\n')
-            }
-          );
-
-        await interaction.editReply({ embeds: [errorEmbed] });
-      }
-    }
-  },
-  {
-    name: 'skip',
-    description: 'Skip the current song',
-    async execute(interaction) {
-      const skipped = MusicSystem.skipSong(interaction.guild.id);
-      
-      if (skipped) {
-        await interaction.reply('⏭️ Skipped the current song!');
-      } else {
-        await interaction.reply('❌ No song is currently playing.');
-      }
-    }
-  },
-  {
-    name: 'stop',
-    description: 'Stop the music and clear the queue',
-    async execute(interaction) {
-      const stopped = MusicSystem.stopMusic(interaction.guild.id);
-      
-      if (stopped) {
-        await interaction.reply('⏹️ Stopped the music and cleared the queue!');
-      } else {
-        await interaction.reply('❌ No music is currently playing.');
-      }
-    }
-  },
-  {
-    name: 'queue',
-    description: 'Show the current music queue',
-    async execute(interaction) {
-      const queue = MusicSystem.getQueueList(interaction.guild.id);
-      
-      if (queue.length === 0) {
-        return interaction.reply('📭 The queue is empty!');
-      }
-
-      const nowPlaying = MusicSystem.getNowPlaying(interaction.guild.id);
-      const queueList = queue.slice(0, 10).map((song, index) => 
-        `**${index + 1}.** ${song.title} - ${song.requestedBy} (${song.durationFormatted})`
-      ).join('\n');
-
-      const embed = new EmbedBuilder()
-        .setTitle('🎵 Music Queue')
-        .setColor(0x1DB954)
-        .setDescription(nowPlaying ? `**Now Playing:** ${nowPlaying.title}\n\n**Up Next:**\n${queueList}` : `**Queue:**\n${queueList}`)
-        .setFooter({ text: `Total songs in queue: ${queue.length}` })
-        .setTimestamp();
-
-      await interaction.reply({ embeds: [embed] });
-    }
-  },
-  {
-    name: 'nowplaying',
-    description: 'Show the currently playing song',
-    async execute(interaction) {
-      const nowPlaying = MusicSystem.getNowPlaying(interaction.guild.id);
-      
-      if (!nowPlaying) {
-        return interaction.reply('❌ No song is currently playing!');
-      }
-
-      const embed = new EmbedBuilder()
-        .setTitle('🎵 Now Playing')
-        .setColor(0x1DB954)
-        .setDescription(`**${nowPlaying.title}**`)
-        .addFields(
-          { name: 'Requested By', value: nowPlaying.requestedBy, inline: true },
-          { name: 'Duration', value: nowPlaying.durationFormatted, inline: true },
-          { name: 'URL', value: `[Click Here](${nowPlaying.url})`, inline: true }
-        )
-        .setThumbnail(nowPlaying.thumbnail)
-        .setTimestamp();
-
-      await interaction.reply({ embeds: [embed] });
-    }
-  },
-  {
-    name: 'volume',
-    description: 'Set the music volume',
-    options: [
-      {
-        name: 'volume',
-        type: 4,
-        description: 'Volume level (1-100)',
-        required: true,
-        min_value: 1,
-        max_value: 100
-      }
-    ],
-    async execute(interaction) {
-      const volume = interaction.options.getInteger('volume');
-      const newVolume = MusicSystem.setVolume(interaction.guild.id, volume);
-      
-      await interaction.reply(`🔊 Volume set to ${Math.round(newVolume * 100)}%`);
-    }
-  },
-  {
-    name: 'shuffle',
-    description: 'Shuffle the current music queue',
-    async execute(interaction) {
-      const shuffled = MusicSystem.shuffleQueue(interaction.guild.id);
-      
-      if (shuffled) {
-        await interaction.reply('🔀 Shuffled the queue!');
-      } else {
-        await interaction.reply('❌ No songs in queue to shuffle.');
-      }
-    }
-  },
-
-  // 🛡️ Moderation Commands (Simplified - no auto-mod configuration)
+  // 🛡️ Moderation Commands
   {
     name: 'warn',
     description: 'Warn a user for rule violation',
@@ -1696,7 +461,7 @@ const commands = [
       const user = interaction.options.getUser('user');
       const reason = interaction.options.getString('reason');
 
-      const warningCount = AutoModSystem.addWarning(interaction.guild.id, user.id, reason);
+      const warningCount = SimpleAutoMod.addWarning(interaction.guild.id, user.id, reason);
 
       const embed = new EmbedBuilder()
         .setTitle('⚠️ User Warned')
@@ -1705,18 +470,18 @@ const commands = [
           { name: 'User', value: `${user.tag} (${user.id})`, inline: true },
           { name: 'Warned By', value: interaction.user.tag, inline: true },
           { name: 'Reason', value: reason, inline: false },
-          { name: 'Total Warnings', value: `${warningCount}`, inline: true }
+          { name: 'Total Warnings', value: `${warningCount}/6`, inline: true }
         )
         .setTimestamp();
 
       await interaction.reply({ embeds: [embed] });
 
-      // Log the warning
-      const config = getServerConfig(interaction.guild.id);
-      if (config.logChannel) {
-        const logChannel = interaction.guild.channels.cache.get(config.logChannel);
-        if (logChannel) {
-          await logChannel.send({ embeds: [embed] });
+      // Check if user should be timed out (6 warnings)
+      if (warningCount >= 6) {
+        const member = interaction.guild.members.cache.get(user.id);
+        if (member) {
+          await SimpleAutoMod.timeoutUser(member);
+          SimpleAutoMod.clearWarnings(interaction.guild.id, user.id);
         }
       }
     }
@@ -1729,13 +494,13 @@ const commands = [
     ],
     async execute(interaction) {
       const user = interaction.options.getUser('user') || interaction.user;
-      const warnings = AutoModSystem.getWarnings(interaction.guild.id, user.id);
+      const warnings = SimpleAutoMod.getWarnings(interaction.guild.id, user.id);
 
       const embed = new EmbedBuilder()
         .setTitle(`⚠️ Warnings for ${user.tag}`)
         .setColor(0xFFA500)
         .addFields(
-          { name: 'Total Warnings', value: `${warnings.length}`, inline: true }
+          { name: 'Total Warnings', value: `${warnings.length}/6`, inline: true }
         );
 
       if (warnings.length > 0) {
@@ -1765,7 +530,7 @@ const commands = [
       }
 
       const user = interaction.options.getUser('user');
-      const cleared = AutoModSystem.clearWarnings(interaction.guild.id, user.id);
+      const cleared = SimpleAutoMod.clearWarnings(interaction.guild.id, user.id);
 
       const embed = new EmbedBuilder()
         .setTitle('⚠️ Warnings Cleared')
@@ -1836,29 +601,65 @@ const commands = [
       }
     }
   },
+  {
+    name: 'timeout',
+    description: 'Timeout a user',
+    options: [
+      { name: 'user', type: 6, description: 'The user to timeout', required: true },
+      { name: 'duration', type: 4, description: 'Duration in minutes', required: true },
+      { name: 'reason', type: 3, description: 'Reason for timeout', required: false }
+    ],
+    async execute(interaction) {
+      if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
+        return interaction.reply({ content: '❌ You need moderation permissions.', flags: 64 });
+      }
+
+      const user = interaction.options.getUser('user');
+      const duration = interaction.options.getInteger('duration');
+      const reason = interaction.options.getString('reason') || 'No reason provided';
+
+      try {
+        const member = interaction.guild.members.cache.get(user.id);
+        if (!member) {
+          return interaction.reply({ content: '❌ User not found in this server.', flags: 64 });
+        }
+
+        const timeoutDuration = duration * 60 * 1000; // Convert to milliseconds
+        await member.timeout(timeoutDuration, reason);
+
+        const embed = new EmbedBuilder()
+          .setTitle('⏰ User Timed Out')
+          .setColor(0xFFA500)
+          .addFields(
+            { name: 'User', value: `${user.tag} (${user.id})`, inline: true },
+            { name: 'Duration', value: `${duration} minutes`, inline: true },
+            { name: 'Reason', value: reason, inline: false },
+            { name: 'Moderator', value: interaction.user.tag, inline: true }
+          )
+          .setTimestamp();
+
+        await interaction.reply({ embeds: [embed] });
+
+      } catch (error) {
+        console.error('Error timing out user:', error);
+        await interaction.reply({ content: '❌ Failed to timeout user.', flags: 64 });
+      }
+    }
+  },
 
   // ⚙️ Admin Commands
   {
-    name: 'setup-automated',
-    description: 'Set up all automated systems with one command',
+    name: 'setup-welcome',
+    description: 'Set up welcome and goodbye system',
     options: [
       {
-        name: 'level_channel', type: 7, description: 'Channel for level-up notifications', required: true, channel_types: [0]
+        name: 'welcome_channel', type: 7, description: 'Channel for welcome messages', required: true, channel_types: [0]
       },
       {
-        name: 'music_channel', type: 7, description: 'Channel for music commands', required: false, channel_types: [0]
+        name: 'goodbye_channel', type: 7, description: 'Channel for goodbye messages', required: false, channel_types: [0]
       },
       {
-        name: 'log_channel', type: 7, description: 'Channel for moderation logs', required: false, channel_types: [0]
-      },
-      {
-        name: 'new_role', type: 8, description: 'Role for new members (Level 1)', required: false
-      },
-      {
-        name: 'member_role', type: 8, description: 'Role for members (Level 10)', required: false
-      },
-      {
-        name: 'shadow_role', type: 8, description: 'Role for shadows (Level 25)', required: false
+        name: 'mod_channel', type: 7, description: 'Channel for moderation logs', required: false, channel_types: [0]
       }
     ],
     async execute(interaction) {
@@ -1866,44 +667,42 @@ const commands = [
         return interaction.reply({ content: '❌ You need administrator permissions.', flags: 64 });
       }
 
-      await interaction.deferReply();
-
-      const levelChannel = interaction.options.getChannel('level_channel');
-      const musicChannel = interaction.options.getChannel('music_channel');
-      const logChannel = interaction.options.getChannel('log_channel');
-      const newRole = interaction.options.getRole('new_role');
-      const memberRole = interaction.options.getRole('member_role');
-      const shadowRole = interaction.options.getRole('shadow_role');
+      const welcomeChannel = interaction.options.getChannel('welcome_channel');
+      const goodbyeChannel = interaction.options.getChannel('goodbye_channel');
+      const modChannel = interaction.options.getChannel('mod_channel');
 
       const config = getServerConfig(interaction.guild.id);
       
       let setupResults = [];
 
-      if (levelChannel) {
-        config.welcomeChannel = levelChannel.id;
+      if (welcomeChannel) {
+        config.welcomeChannel = welcomeChannel.id;
         setupResults.push('✅ Welcome channel set');
       }
 
-      if (logChannel) {
-        config.logChannel = logChannel.id;
-        setupResults.push('✅ Log channel set');
+      if (goodbyeChannel) {
+        config.goodbyeChannel = goodbyeChannel.id;
+        setupResults.push('✅ Goodbye channel set');
       }
 
-      // Auto-mod is already enabled by default, no need to set it up
+      if (modChannel) {
+        config.modChannel = modChannel.id;
+        setupResults.push('✅ Mod channel set');
+      }
 
       await saveConfig();
 
       const embed = new EmbedBuilder()
-        .setTitle('⚙️ Automated Setup Complete')
+        .setTitle('⚙️ Setup Complete')
         .setColor(0x00FF00)
         .setDescription('The following features have been configured:')
         .addFields(
           { name: 'Setup Results', value: setupResults.join('\n') || 'No features configured', inline: false }
         )
-        .setFooter({ text: 'Auto-moderation is enabled by default with bilingual support' })
+        .setFooter({ text: 'Auto-moderation is always active for English and Arabic banned words' })
         .setTimestamp();
 
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.reply({ embeds: [embed] });
     }
   },
   {
@@ -1983,153 +782,32 @@ const commands = [
     }
   },
   {
-    name: 'setup-verification',
-    description: 'Set up verification system for new members',
-    options: [
-      { name: 'channel', type: 7, description: 'Channel for verification', required: true, channel_types: [0] },
-      { name: 'role', type: 8, description: 'Role to assign after verification', required: true }
-    ],
-    async execute(interaction) {
-      if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-        return interaction.reply({ content: '❌ You need administrator permissions.', flags: 64 });
-      }
-
-      await interaction.deferReply();
-
-      const channel = interaction.options.getChannel('channel');
-      const role = interaction.options.getRole('role');
-
-      const success = await VerificationSystem.setupVerification(interaction.guild.id, channel.id, role.id);
-
-      const embed = new EmbedBuilder()
-        .setTitle(success ? '✅ Verification System Setup' : '❌ Setup Failed')
-        .setColor(success ? 0x00FF00 : 0xFF0000)
-        .setDescription(success ? 
-          `Verification system has been set up in ${channel}. Users can click the verify button to get the ${role} role.` :
-          'Failed to set up verification system. Please check channel and role permissions.'
-        )
-        .addFields(
-          { name: 'Verification Channel', value: `${channel}`, inline: true },
-          { name: 'Verification Role', value: `${role}`, inline: true }
-        )
-        .setTimestamp();
-
-      await interaction.editReply({ embeds: [embed] });
-    }
-  },
-  {
-    name: 'rules',
-    description: 'Manage server rules',
+    name: 'setmodchannel',
+    description: 'Set the moderation log channel',
     options: [
       {
-        name: 'action', type: 3, description: 'Action to perform', required: true,
-        choices: [
-          { name: 'Add', value: 'add' }, { name: 'Remove', value: 'remove' }, { name: 'List', value: 'list' },
-          { name: 'Set Channel', value: 'setchannel' }, { name: 'Clear', value: 'clear' }, { name: 'Post', value: 'post' }
-        ]
-      },
-      { name: 'text', type: 3, description: 'Rule text (for add)', required: false },
-      { name: 'index', type: 4, description: 'Rule index (for remove)', required: false },
-      { name: 'channel', type: 7, description: 'Channel to post rules', required: false, channel_types: [0] }
+        name: 'channel', type: 7, description: 'The channel to send moderation logs to', required: true, channel_types: [0]
+      }
     ],
     async execute(interaction) {
       if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
         return interaction.reply({ content: '❌ You need administrator permissions.', flags: 64 });
       }
 
-      const action = interaction.options.getString('action');
-      const text = interaction.options.getString('text');
-      const index = interaction.options.getInteger('index');
       const channel = interaction.options.getChannel('channel');
 
-      let embed;
-
-      switch (action) {
-        case 'add':
-          if (!text) {
-            return interaction.reply({ content: '❌ Please provide rule text.', flags: 64 });
-          }
-          const ruleNumber = RulesSystem.addRule(interaction.guild.id, text);
-          embed = new EmbedBuilder()
-            .setTitle('📜 Rules Management')
-            .setColor(0x00FF00)
-            .setDescription(`✅ Added rule ${ruleNumber}: ${text}`);
-          break;
-
-        case 'remove':
-          if (!index) {
-            return interaction.reply({ content: '❌ Please provide rule index to remove.', flags: 64 });
-          }
-          const removed = RulesSystem.removeRule(interaction.guild.id, index);
-          embed = new EmbedBuilder()
-            .setTitle('📜 Rules Management')
-            .setColor(removed ? 0x00FF00 : 0xFF0000)
-            .setDescription(removed ? `✅ Removed rule ${index}` : `❌ Rule ${index} not found`);
-          break;
-
-        case 'list':
-          const rules = RulesSystem.getRules(interaction.guild.id);
-          embed = new EmbedBuilder()
-            .setTitle('📜 Server Rules')
-            .setColor(0x3498DB)
-            .setDescription(rules.length > 0 ? rules.map((rule, i) => `**${i + 1}.** ${rule}`).join('\n') : 'No rules set')
-            .addFields({ name: 'Total Rules', value: `${rules.length}`, inline: true });
-          break;
-
-        case 'clear':
-          RulesSystem.clearRules(interaction.guild.id);
-          embed = new EmbedBuilder()
-            .setTitle('📜 Rules Management')
-            .setColor(0x00FF00)
-            .setDescription('✅ Cleared all rules');
-          break;
-
-        case 'post':
-          if (!channel) {
-            return interaction.reply({ content: '❌ Please provide a channel to post rules.', flags: 64 });
-          }
-          const posted = await RulesSystem.postRules(interaction.guild.id, channel);
-          embed = new EmbedBuilder()
-            .setTitle('📜 Rules Management')
-            .setColor(posted ? 0x00FF00 : 0xFF0000)
-            .setDescription(posted ? `✅ Rules posted in ${channel}` : '❌ No rules to post');
-          break;
-
-        default:
-          return interaction.reply({ content: '❌ Invalid action.', flags: 64 });
-      }
-
-      await interaction.reply({ embeds: [embed] });
-    }
-  },
-  {
-    name: 'config',
-    description: 'View the current bot configuration',
-    async execute(interaction) {
-      if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-        return interaction.reply({ content: '❌ You need administrator permissions.', flags: 64 });
-      }
-
       const config = getServerConfig(interaction.guild.id);
-      const autoModSettings = config.autoModSettings;
-      const rulesCount = RulesSystem.getRules(interaction.guild.id).length;
+      config.modChannel = channel.id;
+
+      await saveConfig();
 
       const embed = new EmbedBuilder()
-        .setTitle('⚙️ Server Configuration')
-        .setColor(0x3498DB)
+        .setTitle('✅ Mod Channel Set')
+        .setColor(0x00FF00)
+        .setDescription(`Moderation logs will be sent to ${channel}`)
         .addFields(
-          { name: 'Welcome Channel', value: config.welcomeChannel ? `<#${config.welcomeChannel}>` : '❌ Not set', inline: true },
-          { name: 'Goodbye Channel', value: config.goodbyeChannel ? `<#${config.goodbyeChannel}>` : '❌ Not set', inline: true },
-          { name: 'Log Channel', value: config.logChannel ? `<#${config.logChannel}>` : '❌ Not set', inline: true },
-          { name: 'Auto Role', value: config.autoRole ? `<@&${config.autoRole}>` : '❌ Not set', inline: true },
-          { name: 'Verification Channel', value: config.verificationChannel ? `<#${config.verificationChannel}>` : '❌ Not set', inline: true },
-          { name: 'Verification Role', value: config.verificationRole ? `<@&${config.verificationRole}>` : '❌ Not set', inline: true },
-          { name: 'Auto-Mod Status', value: autoModSettings.enabled ? '✅ Enabled' : '❌ Disabled', inline: true },
-          { name: 'Check English', value: autoModSettings.checkEnglish ? '✅' : '❌', inline: true },
-          { name: 'Check Arabic', value: autoModSettings.checkArabic ? '✅' : '❌', inline: true },
-          { name: 'Server Rules', value: `${rulesCount}`, inline: true }
+          { name: 'Channel', value: `${channel}`, inline: true }
         )
-        .setFooter({ text: 'Auto-moderation is enabled by default with bilingual support' })
         .setTimestamp();
 
       await interaction.reply({ embeds: [embed] });
@@ -2146,24 +824,13 @@ commands.forEach(cmd => {
 loadConfig();
 
 // Health check endpoints
-app.get('/quick-health', (req, res) => {
-  res.status(200).json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    bot: client?.user ? 'ready' : 'starting'
-  });
-});
-
 app.get('/', (req, res) => {
   res.status(200).json({
     status: 'online',
     message: 'Discord Bot is running!',
     timestamp: new Date().toISOString(),
     uptime: Math.floor(process.uptime()),
-    guilds: client?.guilds?.cache?.size || 0,
-    memory: `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)} MB`,
-    platform: process.platform,
-    nodeVersion: process.version
+    guilds: client?.guilds?.cache?.size || 0
   });
 });
 
@@ -2179,7 +846,6 @@ app.get('/health', (req, res) => {
 
 const server = app.listen(PORT, () => {
   console.log(`🫀 Health check server running on port ${PORT}`);
-  console.log(`🌐 Health check available at http://localhost:${PORT}`);
 });
 
 // Deploy commands function
@@ -2209,13 +875,6 @@ async function deployCommands() {
     
   } catch (error) {
     console.error('❌ Error deploying commands:', error);
-    
-    if (error.code === 50001) {
-      console.log('💡 Missing Access: Make sure your bot has "applications.commands" scope');
-    } else if (error.code === 50013) {
-      console.log('💡 Missing Permissions: Bot needs "Use Application Commands" permission');
-    }
-    
     return false;
   }
 }
@@ -2236,16 +895,18 @@ async function sendWelcomeMessages(member) {
 
 We're glad to have you here! You are member #${memberCount}.
 
-**Features:**
-• Music System - Play songs in voice channels
-• Welcome Messages - Personalized greetings
-• Auto-moderation (English & Arabic)
+**Server Features:**
+• Auto-moderation for English & Arabic
+• Welcome/Goodbye messages
+• Moderation tools
 • Easy to use commands
 
-**Quick Start:**
-• Use /join to make the bot join a voice channel
-• Use /play to play music from YouTube
-• Use /help to see all commands
+**Important Rules:**
+• No inappropriate language (English or Arabic)
+• Be respectful to other members
+• Follow Discord's Terms of Service
+
+Use \`/help\` to see all available commands!
 
 Enjoy your stay! 🚀
     `.trim();
@@ -2273,7 +934,7 @@ Enjoy your stay! 🚀
           .replace(/{username}/g, member.user.username)
           .replace(/{tag}/g, member.user.tag);
       } else {
-        welcomeMessage = `🎉 **Welcome to ${member.guild.name}, ${member.user}!** 🎉\n\nWe're excited to have you with us! You are our **#${memberCount}** member!\n\nUse \`/help\` to see all available commands and \`/join\` to start playing music! 🎵`;
+        welcomeMessage = `🎉 **Welcome to ${member.guild.name}, ${member.user}!** 🎉\n\nWe're excited to have you with us! You are our **#${memberCount}** member!\n\nPlease read the rules and enjoy your stay! 🚀`;
       }
 
       try {
@@ -2329,34 +990,15 @@ async function sendGoodbyeMessage(member) {
   }
 }
 
-// Auto-leave if everyone leaves the voice channel
-client.on('voiceStateUpdate', async (oldState, newState) => {
-  // Auto-leave if everyone leaves the voice channel
-  if (oldState.channel && !newState.channel) {
-    const connection = voiceConnections.get(oldState.guild.id);
-    if (connection) {
-      const voiceChannel = oldState.guild.channels.cache.get(connection.joinConfig.channelId);
-      if (voiceChannel && voiceChannel.members.size === 1) {
-        setTimeout(() => {
-          if (voiceChannel.members.size === 1) {
-            leaveVoice(oldState.guild.id);
-            console.log(`🔊 Auto-left empty voice channel in ${oldState.guild.name}`);
-          }
-        }, 30000);
-      }
-    }
-  }
-});
-
-// Message content handler for bilingual auto-moderation
+// Message content handler for simple auto-moderation
 client.on('messageCreate', async (message) => {
   // Ignore bot messages and DMs
   if (message.author.bot || !message.guild) return;
 
-  // Bilingual auto-moderation check
-  const violationResult = BilingualAutoMod.checkMessage(message.content, message.guild.id);
-  if (violationResult) {
-    await AutoModSystem.handleViolation(message, violationResult);
+  // Simple auto-moderation check
+  const violation = SimpleAutoMod.checkMessage(message.content);
+  if (violation) {
+    await SimpleAutoMod.handleViolation(message, violation);
     return;
   }
 
@@ -2373,26 +1015,10 @@ client.on('messageCreate', async (message) => {
     const embed = new EmbedBuilder()
       .setTitle('🤖 Bot Commands')
       .setColor(0x3498DB)
-      .setDescription(`**Slash Commands:**\nUse \`/\` followed by the command name\n\n**Message Commands:**`)
-      .addFields(
-        { name: '🎪 General', value: '`!ping`, `!help`', inline: true }
-      )
-      .setFooter({ text: 'Slash commands recommended for full features!' });
+      .setDescription(`**Slash Commands:**\nUse \`/\` followed by the command name\n\n**Auto-Moderation:**\n• Automatically detects banned words in English & Arabic\n• 6 warnings = 3 day timeout\n• Warnings reset after timeout`)
+      .setFooter({ text: 'Use /help for full command list!' });
 
     await message.reply({ embeds: [embed] });
-  }
-});
-
-// Button interactions (for verification)
-client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isButton()) return;
-
-  try {
-    if (interaction.customId === 'verify_user') {
-      await VerificationSystem.handleVerification(interaction);
-    }
-  } catch (error) {
-    console.error('Button interaction error:', error);
   }
 });
 
@@ -2403,14 +1029,13 @@ client.once('ready', async (c) => {
   console.log(`📊 Serving ${serverCount} server(s)`);
   console.log(`🔄 Loaded ${client.commands.size} commands`);
   console.log(`🌐 Health check server running on port ${PORT}`);
+  console.log(`🛡️ Auto-moderation active for English & Arabic banned words`);
 
   // Set activity
   client.user.setActivity({
     name: `${serverCount} servers | /help`,
     type: ActivityType.Watching
   });
-
-  console.log(`🎯 Activity set: Watching ${serverCount} servers`);
 
   // Auto-deploy commands on startup
   if (process.env.NODE_ENV === 'production') {
@@ -2474,9 +1099,6 @@ client.on('error', (error) => {
 // Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('🔄 Shutting down bot gracefully...');
-  voiceConnections.forEach((connection, guildId) => {
-    leaveVoice(guildId);
-  });
   server.close();
   client.destroy();
   process.exit(0);
@@ -2484,9 +1106,6 @@ process.on('SIGINT', async () => {
 
 process.on('SIGTERM', async () => {
   console.log('🔄 Shutting down bot gracefully...');
-  voiceConnections.forEach((connection, guildId) => {
-    leaveVoice(guildId);
-  });
   server.close();
   client.destroy();
   process.exit(0);
