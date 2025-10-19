@@ -1,190 +1,163 @@
 require('dotenv').config();
 const { REST, Routes } = require('discord.js');
 
-console.log('🔧 Guild Command Deployer Starting...');
-console.log('Environment Check:');
-console.log('DISCORD_BOT_TOKEN:', process.env.DISCORD_BOT_TOKEN ? '***' : 'NOT SET');
-console.log('CLIENT_ID:', process.env.CLIENT_ID || 'NOT SET');
-console.log('GUILD_ID:', process.env.GUILD_ID || 'NOT SET');
+console.log('⚡ Guild Command Deployer Starting...');
+console.log('🔧 Environment Check:');
+console.log('DISCORD_BOT_TOKEN:', process.env.DISCORD_BOT_TOKEN ? '✅ Set' : '❌ NOT SET');
+console.log('CLIENT_ID:', process.env.CLIENT_ID ? '✅ Set' : '❌ NOT SET');
+console.log('GUILD_ID:', process.env.GUILD_ID ? '✅ Set' : '❌ NOT SET');
 
-// Select only essential commands for guild deployment
+// ADMIN/CONFIGURATION COMMANDS ONLY - For testing and setup
 const commands = [
-  {
-    name: 'ping',
-    description: "Check the bot's latency"
-  },
-  {
-    name: 'help',
-    description: 'Show all available commands'
-  },
+  // ⚙️ Setup Commands
   {
     name: 'setup-automated',
     description: 'Set up all automated systems with one command',
     options: [
       {
-        name: 'level_channel',
-        type: 7,
-        description: 'Channel for level-up notifications',
-        required: true,
-        channel_types: [0]
+        name: 'level_channel', type: 7, description: 'Channel for level-up notifications', required: true, channel_types: [0]
       },
       {
-        name: 'music_channel',
-        type: 7,
-        description: 'Channel for music commands',
-        required: false,
-        channel_types: [0]
+        name: 'music_channel', type: 7, description: 'Channel for music commands', required: false, channel_types: [0]
       },
       {
-        name: 'log_channel',
-        type: 7,
-        description: 'Channel for moderation logs',
-        required: false,
-        channel_types: [0]
+        name: 'log_channel', type: 7, description: 'Channel for moderation logs', required: false, channel_types: [0]
       },
       {
-        name: 'new_role',
-        type: 8,
-        description: 'Role for new members (Level 1)',
-        required: false
+        name: 'new_role', type: 8, description: 'Role for new members (Level 1)', required: false
       },
       {
-        name: 'member_role',
-        type: 8,
-        description: 'Role for members (Level 10)',
-        required: false
+        name: 'member_role', type: 8, description: 'Role for members (Level 10)', required: false
       },
       {
-        name: 'shadow_role',
-        type: 8,
-        description: 'Role for shadows (Level 25)',
-        required: false
+        name: 'shadow_role', type: 8, description: 'Role for shadows (Level 25)', required: false
       }
     ]
   },
   {
-    name: 'play',
-    description: 'Play music from a YouTube URL',
+    name: 'leveling-setup',
+    description: 'Set up the leveling system for this server',
     options: [
-      {
-        name: 'url',
-        type: 3,
-        description: 'YouTube URL to play',
-        required: true
-      }
+      { name: 'channel', type: 7, description: 'Channel for level-up notifications', required: false, channel_types: [0] },
+      { name: 'member_role', type: 8, description: 'Role to assign at member level', required: false },
+      { name: 'shadow_role', type: 8, description: 'Role to assign at shadow level', required: false },
+      { name: 'member_threshold', type: 4, description: 'Level for member role', required: false, min_value: 1 },
+      { name: 'shadow_threshold', type: 4, description: 'Level for shadow role', required: false, min_value: 1 }
     ]
   },
+
+  // 🛡️ Moderation Commands
   {
-    name: 'skip',
-    description: 'Skip the current song'
-  },
-  {
-    name: 'stop',
-    description: 'Stop the music and clear the queue'
-  },
-  {
-    name: 'queue',
-    description: 'Show the current music queue'
-  },
-  {
-    name: 'volume',
-    description: 'Set the music volume',
+    name: 'automod',
+    description: 'Configure auto moderation',
     options: [
       {
-        name: 'volume',
-        type: 4,
-        description: 'Volume level (1-100)',
-        required: true,
-        min_value: 1,
-        max_value: 100
-      }
-    ]
-  },
-  {
-    name: 'nowplaying',
-    description: 'Show the currently playing song'
-  },
-  {
-    name: 'level',
-    description: 'Check your level or another user\'s level',
-    options: [
-      {
-        name: 'user',
-        type: 6,
-        description: 'The user to check level for',
-        required: false
-      }
-    ]
-  },
-  {
-    name: 'leaderboard',
-    description: 'Show the server level leaderboard'
-  },
-  {
-    name: 'clear',
-    description: 'Clear messages from a channel',
-    options: [
-      {
-        name: 'amount',
-        type: 4,
-        description: 'Number of messages to clear (1-100)',
-        required: true,
-        min_value: 1,
-        max_value: 100
-      }
+        name: 'action', type: 3, description: 'What automod should do', required: true,
+        choices: [
+          { name: 'Toggle', value: 'toggle' }, { name: 'Status', value: 'status' }, { name: 'Set Action', value: 'setaction' },
+          { name: 'Set Log Channel', value: 'setlog' }, { name: 'Add Word', value: 'addword' },
+          { name: 'Remove Word', value: 'removeword' }, { name: 'List Words', value: 'listwords' }
+        ]
+      },
+      { name: 'value', type: 3, description: 'Value for setaction or word to add/remove', required: false },
+      { name: 'channel', type: 7, description: 'Channel for moderation logs', required: false, channel_types: [0] }
     ]
   },
   {
     name: 'warn',
     description: 'Warn a user for rule violation',
     options: [
+      { name: 'user', type: 6, description: 'The user to warn', required: true },
+      { name: 'reason', type: 3, description: 'Reason for the warning', required: true }
+    ]
+  },
+  {
+    name: 'warnings',
+    description: 'Check warnings for a user',
+    options: [
+      { name: 'user', type: 6, description: 'The user to check warnings for', required: false }
+    ]
+  },
+  {
+    name: 'clearwarnings',
+    description: 'Clear all warnings for a user',
+    options: [
+      { name: 'user', type: 6, description: 'The user to clear warnings for', required: true }
+    ]
+  },
+  {
+    name: 'clear',
+    description: 'Clear messages from a channel',
+    options: [
       {
-        name: 'user',
-        type: 6,
-        description: 'The user to warn',
-        required: true
-      },
-      {
-        name: 'reason',
-        type: 3,
-        description: 'Reason for the warning',
-        required: true
+        name: 'amount', type: 4, description: 'Number of messages to clear (1-100)', required: true,
+        min_value: 1, max_value: 100
       }
     ]
   },
   {
-    name: 'automod',
-    description: 'Configure auto moderation',
+    name: 'slowmode',
+    description: 'Set slowmode for the current channel',
     options: [
       {
-        name: 'action',
-        type: 3,
-        description: 'What automod should do',
-        required: true,
-        choices: [
-          { name: 'Toggle', value: 'toggle' },
-          { name: 'Status', value: 'status' },
-          { name: 'Set Action', value: 'setaction' },
-          { name: 'Set Log Channel', value: 'setlog' },
-          { name: 'Add Word', value: 'addword' },
-          { name: 'Remove Word', value: 'removeword' },
-          { name: 'List Words', value: 'listwords' }
-        ]
-      },
-      {
-        name: 'value',
-        type: 3,
-        description: 'Value for setaction (warn/mute/kick/ban) or word to add/remove',
-        required: false
-      },
-      {
-        name: 'channel',
-        type: 7,
-        description: 'Channel for moderation logs',
-        required: false,
-        channel_types: [0]
+        name: 'seconds', type: 4, description: 'Slowmode duration in seconds (0-21600)', required: true,
+        min_value: 0, max_value: 21600
       }
     ]
+  },
+
+  // 📋 System Configuration
+  {
+    name: 'setwelcome',
+    description: 'Set the welcome channel for this server',
+    options: [
+      {
+        name: 'channel', type: 7, description: 'The channel to send welcome messages to', required: true, channel_types: [0]
+      },
+      {
+        name: 'message', type: 3, description: 'Custom welcome message', required: false
+      }
+    ]
+  },
+  {
+    name: 'setgoodbye',
+    description: 'Set the goodbye channel for this server',
+    options: [
+      {
+        name: 'channel', type: 7, description: 'The channel to send goodbye messages to', required: true, channel_types: [0]
+      },
+      {
+        name: 'message', type: 3, description: 'Custom goodbye message', required: false
+      }
+    ]
+  },
+  {
+    name: 'setup-verification',
+    description: 'Set up verification system for new members',
+    options: [
+      { name: 'channel', type: 7, description: 'Channel for verification', required: true, channel_types: [0] },
+      { name: 'role', type: 8, description: 'Role to assign after verification', required: true }
+    ]
+  },
+  {
+    name: 'rules',
+    description: 'Manage server rules',
+    options: [
+      {
+        name: 'action', type: 3, description: 'Action to perform', required: true,
+        choices: [
+          { name: 'Add', value: 'add' }, { name: 'Remove', value: 'remove' }, { name: 'List', value: 'list' },
+          { name: 'Set Channel', value: 'setchannel' }, { name: 'Clear', value: 'clear' }, { name: 'Post', value: 'post' }
+        ]
+      },
+      { name: 'text', type: 3, description: 'Rule text (for add)', required: false },
+      { name: 'index', type: 4, description: 'Rule index (for remove)', required: false },
+      { name: 'channel', type: 7, description: 'Channel to post rules', required: false, channel_types: [0] }
+    ]
+  },
+  {
+    name: 'config',
+    description: 'View the current bot configuration'
   }
 ];
 
@@ -192,21 +165,13 @@ const token = process.env.DISCORD_BOT_TOKEN;
 const clientId = process.env.CLIENT_ID;
 const guildId = process.env.GUILD_ID;
 
-if (!token) {
-  console.error('❌ ERROR: DISCORD_BOT_TOKEN is not set in environment variables!');
-  process.exit(1);
-}
-
-if (!clientId) {
-  console.error('❌ ERROR: CLIENT_ID is not set in environment variables!');
-  process.exit(1);
-}
-
-if (!guildId) {
-  console.error('❌ ERROR: GUILD_ID is not set in environment variables!');
-  console.log('💡 Add GUILD_ID=your_server_id to your .env file');
-  console.log('💡 You can get your server ID by enabling Developer Mode in Discord');
-  console.log('💡 Right-click your server → Copy Server ID');
+// Validate environment variables
+if (!token || !clientId || !guildId) {
+  console.error('❌ MISSING ENVIRONMENT VARIABLES:');
+  if (!token) console.error('   - DISCORD_BOT_TOKEN is required');
+  if (!clientId) console.error('   - CLIENT_ID is required');
+  if (!guildId) console.error('   - GUILD_ID is required');
+  console.log('💡 Add these to your .env file or Render environment variables');
   process.exit(1);
 }
 
@@ -214,46 +179,65 @@ const rest = new REST({ version: '10' }).setToken(token);
 
 async function deployGuildCommands() {
   try {
-    console.log(`🔄 Started refreshing guild (/) commands for server ${guildId}.`);
+    console.log(`\n🔄 Deploying guild commands to server: ${guildId}`);
+    console.log(`📝 Deploying ${commands.length} admin commands`);
 
     const data = await rest.put(
       Routes.applicationGuildCommands(clientId, guildId),
       { body: commands }
     );
 
-    console.log(`✅ Successfully reloaded ${data.length} guild (/) commands.`);
-    console.log(`🎯 Commands deployed to server: ${guildId}`);
+    console.log(`✅ SUCCESS: Deployed ${data.length} guild commands!`);
+    console.log(`🎯 Commands available in server: ${guildId}`);
     
-    console.log('\n🚀 Quick-Deploy Commands:');
-    console.log('   - /setup-automated - One-click setup for all systems');
-    console.log('   - /play - Start playing music immediately');
-    console.log('   - /level - Check leveling system');
-    console.log('   - /automod - Configure moderation');
-    
-    console.log('\n⚡ Benefits of Guild Deployment:');
-    console.log('   • Instant command updates (no 1-hour wait)');
-    console.log('   • Perfect for development and testing');
-    console.log('   • Server-specific command sets');
-    console.log('   • Avoid global command limits');
+    console.log('\n⚡ Admin Commands Available:');
+    console.log('   ⚙️  Setup: /setup-automated, /leveling-setup');
+    console.log('   🛡️  Moderation: /automod, /warn, /clear, /slowmode');
+    console.log('   📋 System: /setwelcome, /setgoodbye, /setup-verification, /rules, /config');
     
     console.log('\n💡 Usage Tips:');
-    console.log('   • Use this for testing new commands');
-    console.log('   • Keep global deploy for production');
-    console.log('   • Commands appear instantly in your server');
+    console.log('   • Commands appear INSTANTLY (no 1-hour wait)');
+    console.log('   • Perfect for testing and configuration');
+    console.log('   • Use /setup-automated to configure everything at once');
     
+    return true;
+
   } catch (error) {
-    console.error('❌ Error deploying guild commands:', error.message);
+    console.error('❌ GUILD DEPLOYMENT FAILED:', error.message);
     
-    if (error.code === 50001) {
-      console.log('💡 Missing Access: Make sure your bot is in the server');
-    } else if (error.code === 50013) {
-      console.log('💡 Missing Permissions: Bot needs permission to create commands');
-    } else if (error.code === 10004) {
-      console.log('💡 Unknown Guild: Check your GUILD_ID is correct');
+    // Helpful error messages
+    switch (error.code) {
+      case 50001:
+        console.log('💡 Missing Access: Bot is not in the specified server');
+        console.log('💡 Invite bot to server first');
+        break;
+      case 50013:
+        console.log('💡 Missing Permissions: Bot needs "Use Application Commands" permission');
+        break;
+      case 10004:
+        console.log('💡 Unknown Guild: GUILD_ID is incorrect');
+        console.log('💡 Get your server ID: Server Settings → Widget → Server ID');
+        break;
+      default:
+        console.log('💡 Check your GUILD_ID and ensure bot is in the server');
     }
     
-    process.exit(1);
+    return false;
   }
 }
 
-deployGuildCommands();
+// Handle process events
+process.on('unhandledRejection', (error) => {
+  console.error('Unhandled promise rejection:', error);
+  process.exit(1);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught exception:', error);
+  process.exit(1);
+});
+
+// Run deployment
+deployGuildCommands().then(success => {
+  process.exit(success ? 0 : 1);
+});
