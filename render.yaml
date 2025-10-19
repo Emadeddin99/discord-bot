@@ -5,14 +5,12 @@ services:
     plan: free
     region: oregon
     
-    # Build and deployment settings
-    buildCommand: |
-      npm install
-      npm run deploy:global
+    # SIMPLIFIED - just install, no deployment during build
+    buildCommand: npm install
     startCommand: npm start
     autoDeploy: true
     
-    # Environment variables
+    # Environment variables (keep the rest the same)
     envVars:
       - key: DISCORD_BOT_TOKEN
         sync: false

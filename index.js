@@ -1489,13 +1489,24 @@ client.once('ready', async (c) => {
   console.log(`🔄 Loaded ${client.commands.size} commands`);
   console.log(`🌐 Health check server running on port ${PORT}`);
 
-  await deployCommands();
+  // Auto-deploy commands on startup (only in production)
+  if (process.env.NODE_ENV === 'production') {
+    console.log('🚀 Auto-deploying commands...');
+    try {
+      await deployCommands();
+      console.log('✅ Commands deployed successfully');
+    } catch (error) {
+      console.error('❌ Command deployment failed:', error.message);
+      // Don't exit - let the bot run without command deployment
+    }
+  }
 
   client.user.setActivity({
-    name: `${c.guilds.cache.size} servers | /setup-automated`,
+    name: `${c.guilds.cache.size} servers | /help`,
     type: ActivityType.Watching
   });
 });
+
 
 client.on('guildMemberAdd', async (member) => {
   await sendWelcomeMessages(member);
