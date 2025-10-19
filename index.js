@@ -133,35 +133,261 @@ function getServerConfig(guildId) {
       },
       logChannel: null,
       verificationChannel: null,
-      verificationRole: null
+      verificationRole: null,
+      // Auto-mod settings
+      autoModSettings: {
+        enabled: false,
+        deleteMessages: true,
+        warnUsers: true,
+        logActions: true,
+        checkArabic: true,
+        checkEnglish: true,
+        maxWarnings: 3,
+        muteDuration: 10 // minutes
+      }
     };
   }
   return serverConfigs[guildId];
 }
 
-// YouTube URL validation function
-function validateYouTubeUrl(url) {
-  // Basic YouTube URL patterns
-  const patterns = [
-    /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
-    /^(https?:\/\/)?(www\.)?(youtu\.be\/)([a-zA-Z0-9_-]{11})/,
-    /^(https?:\/\/)?(www\.)?(youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
-    /^(https?:\/\/)?(www\.)?(youtube\.com\/v\/)([a-zA-Z0-9_-]{11})/,
-    /^(https?:\/\/)?(www\.)?(youtube\.com\/attribution_link\?.*v=)([a-zA-Z0-9_-]{11})/
+// Bilingual Text Monitoring System
+class BilingualAutoMod {
+  // English banned words and patterns
+  static englishBannedWords = [
+    // Profanity
+    'fuck', 'shit', 'bitch', 'asshole', 'dick', 'pussy', 'cunt', 'whore', 'slut',
+    'bastard', 'motherfucker', 'bullshit', 'damn', 'hell',
+    // Racial slurs
+    'nigger', 'nigga', 'chink', 'spic', 'kike', 'wetback',
+    // Hate speech
+    'kill all', 'death to', 'exterminate', 'genocide',
+    // Threats
+    'i will kill', 'i will murder', 'i will hurt', 'i will beat',
+    // Self-harm
+    'i want to die', 'i will kill myself', 'suicide', 'cut myself'
   ];
 
+  // Arabic banned words and patterns (transliterated)
+  static arabicBannedWords = [
+    // Profanity
+    'kos', 'kos omak', 'sharmouta', 'ahbal', 'ibn el sharmouta', 'kes ekhtak',
+    'ya ibn el', 'ya bet el', 'ya kalb', 'ya harami', 'ya wad', 'ya 3ars',
+    // Religious insults
+    'ya ibn el kalb', 'ya ibn el sharmouta', 'allah yakhodak', 'ya kafir',
+    // Threats
+    'hatktlk', 'hamotak', 'ha2tlak', 'harag', 'haragek', 'moot', 'mawt',
+    // Sexual content
+    'ayre', 'manyak', 'mnayek', 'nerd', 'nrd', 'nrdy'
+  ];
+
+  // Arabic character ranges for detection
+  static arabicRanges = [
+    [0x0600, 0x06FF], // Arabic
+    [0x0750, 0x077F], // Arabic Supplement
+    [0x08A0, 0x08FF], // Arabic Extended-A
+    [0xFB50, 0xFDFF], // Arabic Presentation Forms-A
+    [0xFE70, 0xFEFF]  // Arabic Presentation Forms-B
+  ];
+
+  // Check if text contains Arabic characters
+  static containsArabic(text) {
+    for (let char of text) {
+      const code = char.charCodeAt(0);
+      for (let [start, end] of this.arabicRanges) {
+        if (code >= start && code <= end) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Check for banned content in both languages
+  static checkMessage(content, guildId) {
+    const config = getServerConfig(guildId);
+    if (!config.autoModSettings.enabled) return null;
+
+    const lowerContent = content.toLowerCase();
+    const results = {
+      violations: [],
+      language: 'none',
+      severity: 'low'
+    };
+
+    // Check English content if enabled
+    if (config.autoModSettings.checkEnglish) {
+      for (const word of this.englishBannedWords) {
+        if (lowerContent.includes(word)) {
+          results.violations.push({
+            word: word,
+            language: 'english',
+            type: this.getViolationType(word)
+          });
+        }
+      }
+    }
+
+    // Check Arabic content if enabled
+    if (config.autoModSettings.checkArabic) {
+      // Check for Arabic characters
+      if (this.containsArabic(content)) {
+        // Check transliterated Arabic banned words
+        for (const word of this.arabicBannedWords) {
+          if (lowerContent.includes(word)) {
+            results.violations.push({
+              word: word,
+              language: 'arabic',
+              type: this.getViolationType(word)
+            });
+          }
+        }
+
+        // Additional Arabic content checks
+        const arabicContent = content;
+        if (this.checkArabicSeverity(arabicContent)) {
+          results.violations.push({
+            word: 'arabic_content',
+            language: 'arabic',
+            type: 'inappropriate'
+          });
+        }
+      }
+    }
+
+    // Determine overall severity
+    if (results.violations.length > 0) {
+      results.severity = this.determineSeverity(results.violations);
+      results.language = results.violations[0].language;
+      return results;
+    }
+
+    return null;
+  }
+
+  // Determine violation type
+  static getViolationType(word) {
+    const profanity = ['fuck', 'shit', 'bitch', 'kos', 'sharmouta', 'ahbal'];
+    const hateSpeech = ['nigger', 'kill all', 'death to', 'kafir', 'harami'];
+    const threats = ['kill', 'murder', 'hurt', 'beat', 'hamotak', 'ha2tlak'];
+
+    if (profanity.some(p => word.includes(p))) return 'profanity';
+    if (hateSpeech.some(h => word.includes(h))) return 'hate_speech';
+    if (threats.some(t => word.includes(t))) return 'threat';
+    return 'inappropriate';
+  }
+
+  // Check Arabic content severity
+  static checkArabicSeverity(content) {
+    const severePatterns = [
+      /كسمك/gi, /كس امك/gi, /شرموطة/gi, /احا/gi, /ابن/gi, /كلب/gi,
+      /حرامي/gi, /هاتك/gi, /هاجر/gi, /نيك/gi, /انيج/gi
+    ];
+
+    return severePatterns.some(pattern => pattern.test(content));
+  }
+
+  // Determine overall severity
+  static determineSeverity(violations) {
+    const hasHateSpeech = violations.some(v => v.type === 'hate_speech');
+    const hasThreats = violations.some(v => v.type === 'threat');
+    
+    if (hasHateSpeech || hasThreats) return 'high';
+    if (violations.some(v => v.type === 'profanity')) return 'medium';
+    return 'low';
+  }
+
+  // Get violation description in both languages
+  static getViolationDescription(violations, language) {
+    const types = violations.map(v => v.type);
+    
+    if (language === 'arabic') {
+      if (types.includes('hate_speech')) return 'كلام كراهية';
+      if (types.includes('threat')) return 'تهديدات';
+      if (types.includes('profanity')) return 'الفاظ نابية';
+      return 'محتوى غير لائق';
+    } else {
+      if (types.includes('hate_speech')) return 'Hate speech';
+      if (types.includes('threat')) return 'Threats';
+      if (types.includes('profanity')) return 'Profanity';
+      return 'Inappropriate content';
+    }
+  }
+}
+
+// Improved YouTube URL validation function
+function validateYouTubeUrl(url) {
+  // Remove any extra parameters that might cause issues
+  let cleanUrl = url.split('&')[0]; // Remove everything after &
+  cleanUrl = cleanUrl.split('?')[0]; // Remove everything after ?
+  
+  // Basic YouTube URL patterns - more comprehensive
+  const patterns = [
+    // Standard watch URLs
+    /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
+    /^(https?:\/\/)?(m\.)?(youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
+    
+    // Short URLs
+    /^(https?:\/\/)?(www\.)?(youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+    /^(https?:\/\/)?(youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+    
+    // Embed URLs
+    /^(https?:\/\/)?(www\.)?(youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+    /^(https?:\/\/)?(m\.)?(youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+    
+    // Mobile URLs
+    /^(https?:\/\/)?(m\.)?(youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
+    
+    // Newer YouTube URLs
+    /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?.*v=)([a-zA-Z0-9_-]{11})/,
+    /^(https?:\/\/)?(music\.)?(youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
+    
+    // With additional parameters
+    /youtube\.com\/watch\?.*v=([a-zA-Z0-9_-]{11})/,
+    /youtu\.be\/([a-zA-Z0-9_-]{11})/
+  ];
+
+  // First try ytdl's built-in validation
+  if (ytdl.validateURL(cleanUrl)) {
+    return {
+      isValid: true,
+      videoId: extractVideoId(cleanUrl),
+      normalizedUrl: cleanUrl
+    };
+  }
+
+  // Then try our pattern matching
   for (const pattern of patterns) {
-    const match = url.match(pattern);
+    const match = cleanUrl.match(pattern);
     if (match) {
-      return {
-        isValid: true,
-        videoId: match[4],
-        normalizedUrl: `https://www.youtube.com/watch?v=${match[4]}`
-      };
+      const videoId = match[4] || match[2] || extractVideoId(cleanUrl);
+      if (videoId && videoId.length === 11) {
+        return {
+          isValid: true,
+          videoId: videoId,
+          normalizedUrl: `https://www.youtube.com/watch?v=${videoId}`
+        };
+      }
     }
   }
 
   return { isValid: false };
+}
+
+// Helper function to extract video ID from various URL formats
+function extractVideoId(url) {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?\/]+)/,
+    /youtube\.com\/watch\?.*v=([^&?\/]+)/,
+    /youtu\.be\/([^&?\/]+)/
+  ];
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  return null;
 }
 
 // Enhanced Music System with Better Error Handling
@@ -474,110 +700,141 @@ function leaveVoice(guildId) {
   return false;
 }
 
-// Auto-Moderation System
+// Enhanced Auto-Moderation System with Bilingual Support
 class AutoModSystem {
   static isEnabled(guildId) {
-    return autoModEnabled.get(guildId) || false;
+    const config = getServerConfig(guildId);
+    return config.autoModSettings.enabled || false;
   }
 
   static toggle(guildId) {
-    const current = this.isEnabled(guildId);
-    autoModEnabled.set(guildId, !current);
+    const config = getServerConfig(guildId);
+    config.autoModSettings.enabled = !config.autoModSettings.enabled;
     saveConfig();
-    return !current;
+    return config.autoModSettings.enabled;
   }
 
   static getBannedWords(guildId) {
     if (!bannedWords.has(guildId)) {
-      bannedWords.set(guildId, []);
+      bannedWords.set(guildId, {
+        english: [],
+        arabic: []
+      });
     }
     return bannedWords.get(guildId);
   }
 
-  static addBannedWord(guildId, word) {
+  static addBannedWord(guildId, word, language = 'english') {
     const words = this.getBannedWords(guildId);
-    if (!words.includes(word.toLowerCase())) {
-      words.push(word.toLowerCase());
+    if (!words[language].includes(word.toLowerCase())) {
+      words[language].push(word.toLowerCase());
       saveConfig();
       return true;
     }
     return false;
   }
 
-  static removeBannedWord(guildId, word) {
+  static removeBannedWord(guildId, word, language = 'english') {
     const words = this.getBannedWords(guildId);
-    const index = words.indexOf(word.toLowerCase());
+    const index = words[language].indexOf(word.toLowerCase());
     if (index > -1) {
-      words.splice(index, 1);
+      words[language].splice(index, 1);
       saveConfig();
       return true;
     }
     return false;
   }
 
-  static checkMessage(content, guildId) {
-    if (!this.isEnabled(guildId)) return null;
-    
-    const words = this.getBannedWords(guildId);
-    const lowerContent = content.toLowerCase();
-    
-    for (const word of words) {
-      if (lowerContent.includes(word)) {
-        return word;
-      }
-    }
-    return null;
-  }
-
-  static async handleViolation(message, bannedWord) {
+  static async handleViolation(message, violationResult) {
     try {
-      // Delete the message
-      await message.delete();
-      
-      // Add warning to user
-      this.addWarning(message.guild.id, message.author.id, `Used banned word: ${bannedWord}`);
-      
-      // Send warning to user
-      try {
-        const warningDM = new EmbedBuilder()
-          .setTitle('⚠️ Auto-Moderation Warning')
-          .setColor(0xFFA500)
-          .setDescription(`Your message in **${message.guild.name}** was deleted for containing a banned word.`)
-          .addFields(
-            { name: 'Banned Word', value: bannedWord, inline: true },
-            { name: 'Message', value: message.content.slice(0, 100) + '...', inline: true }
-          )
-          .setFooter({ text: 'Repeated violations may result in mutes or bans' })
-          .setTimestamp();
-
-        await message.author.send({ embeds: [warningDM] });
-      } catch (dmError) {
-        console.log(`Could not send DM to ${message.author.tag}`);
-      }
-
-      // Log the action
       const config = getServerConfig(message.guild.id);
-      if (config.logChannel) {
-        const logChannel = message.guild.channels.cache.get(config.logChannel);
-        if (logChannel) {
-          const logEmbed = new EmbedBuilder()
-            .setTitle('🔨 Auto-Mod Action')
-            .setColor(0xFF0000)
-            .setDescription(`Message deleted for banned word`)
-            .addFields(
-              { name: 'User', value: `${message.author.tag} (${message.author.id})`, inline: true },
-              { name: 'Channel', value: `${message.channel}`, inline: true },
-              { name: 'Banned Word', value: bannedWord, inline: true },
-              { name: 'Message', value: message.content.slice(0, 200) + '...', inline: false }
-            )
-            .setTimestamp();
-
-          await logChannel.send({ embeds: [logEmbed] });
-        }
+      
+      // Delete the message if enabled
+      if (config.autoModSettings.deleteMessages) {
+        await message.delete();
       }
+
+      // Add warning to user if enabled
+      if (config.autoModSettings.warnUsers) {
+        this.addWarning(message.guild.id, message.author.id, 
+          `Auto-mod violation: ${BilingualAutoMod.getViolationDescription(violationResult.violations, 'english')}`
+        );
+
+        // Send warning DM in appropriate language
+        await this.sendWarningDM(message, violationResult);
+      }
+
+      // Log the action if enabled
+      if (config.autoModSettings.logActions && config.logChannel) {
+        await this.logViolation(message, violationResult);
+      }
+
+      console.log(`🛡️ Auto-mod action for ${message.author.tag}: ${violationResult.severity} severity`);
 
     } catch (error) {
       console.error('Error handling auto-mod violation:', error);
+    }
+  }
+
+  static async sendWarningDM(message, violationResult) {
+    try {
+      const violationDesc = BilingualAutoMod.getViolationDescription(violationResult.violations, 'english');
+      const arabicDesc = BilingualAutoMod.getViolationDescription(violationResult.violations, 'arabic');
+      
+      const warningDM = new EmbedBuilder()
+        .setTitle('⚠️ Auto-Moderation Warning')
+        .setColor(0xFFA500)
+        .setDescription(`Your message in **${message.guild.name}** was flagged by our moderation system.`)
+        .addFields(
+          { name: 'Violation', value: violationDesc, inline: true },
+          { name: 'Severity', value: violationResult.severity.toUpperCase(), inline: true },
+          { name: 'Language', value: violationResult.language.toUpperCase(), inline: true },
+          { name: 'Message Preview', value: message.content.slice(0, 100) + '...', inline: false }
+        )
+        .setFooter({ text: 'Repeated violations may result in mutes or bans' })
+        .setTimestamp();
+
+      // Add Arabic description if relevant
+      if (violationResult.language === 'arabic') {
+        warningDM.addFields({
+          name: 'المخالفة',
+          value: arabicDesc,
+          inline: false
+        });
+      }
+
+      await message.author.send({ embeds: [warningDM] });
+    } catch (dmError) {
+      console.log(`Could not send DM to ${message.author.tag}`);
+    }
+  }
+
+  static async logViolation(message, violationResult) {
+    try {
+      const config = getServerConfig(message.guild.id);
+      const logChannel = message.guild.channels.cache.get(config.logChannel);
+      
+      if (!logChannel) return;
+
+      const violationDesc = BilingualAutoMod.getViolationDescription(violationResult.violations, 'english');
+      
+      const logEmbed = new EmbedBuilder()
+        .setTitle('🔨 Auto-Mod Action')
+        .setColor(0xFF0000)
+        .setDescription(`Message ${config.autoModSettings.deleteMessages ? 'deleted' : 'flagged'} for violation`)
+        .addFields(
+          { name: 'User', value: `${message.author.tag} (${message.author.id})`, inline: true },
+          { name: 'Channel', value: `${message.channel}`, inline: true },
+          { name: 'Violation', value: violationDesc, inline: true },
+          { name: 'Severity', value: violationResult.severity.toUpperCase(), inline: true },
+          { name: 'Language', value: violationResult.language.toUpperCase(), inline: true },
+          { name: 'Message', value: message.content.slice(0, 200) + '...', inline: false }
+        )
+        .setTimestamp();
+
+      await logChannel.send({ embeds: [logEmbed] });
+    } catch (error) {
+      console.error('Error logging violation:', error);
     }
   }
 
@@ -594,9 +851,10 @@ class AutoModSystem {
     userWarnings.set(guildId, guildWarnings);
     saveConfig();
     
-    // Check if user should be muted (3+ warnings)
+    // Check if user should be muted
+    const config = getServerConfig(guildId);
     const userWarningCount = guildWarnings[userId].length;
-    if (userWarningCount >= 3) {
+    if (userWarningCount >= config.autoModSettings.maxWarnings) {
       this.autoMuteUser(guildId, userId);
     }
     
@@ -607,10 +865,11 @@ class AutoModSystem {
     try {
       const guild = client.guilds.cache.get(guildId);
       const member = await guild.members.fetch(userId);
+      const config = getServerConfig(guildId);
       
       // You would need to create a muted role first
       // This is a placeholder for mute functionality
-      console.log(`🔇 Auto-mute triggered for ${member.user.tag} in ${guild.name}`);
+      console.log(`🔇 Auto-mute triggered for ${member.user.tag} in ${guild.name} for ${config.autoModSettings.muteDuration} minutes`);
       
     } catch (error) {
       console.error('Error auto-muting user:', error);
@@ -783,7 +1042,7 @@ class VerificationSystem {
   }
 }
 
-// Command Definitions - All features except leveling
+// Command Definitions - All features with bilingual auto-mod
 const commands = [
   // 🎪 General Commands
   {
@@ -1005,20 +1264,53 @@ const commands = [
         return interaction.editReply('❌ You need to be in a voice channel to play music!');
       }
 
-      // Enhanced URL validation
+      // Enhanced URL validation with better error messages
       const urlValidation = validateYouTubeUrl(url);
-      if (!urlValidation.isValid && !ytdl.validateURL(url)) {
-        return interaction.editReply('❌ Please provide a valid YouTube URL!\n\nSupported formats:\n• https://www.youtube.com/watch?v=VIDEO_ID\n• https://youtu.be/VIDEO_ID\n• https://www.youtube.com/embed/VIDEO_ID');
+      
+      if (!urlValidation.isValid) {
+        const errorEmbed = new EmbedBuilder()
+          .setTitle('❌ Invalid YouTube URL')
+          .setColor(0xFF0000)
+          .setDescription('Please provide a valid YouTube URL.')
+          .addFields(
+            { 
+              name: '✅ Supported Formats', 
+              value: [
+                '• `https://www.youtube.com/watch?v=VIDEO_ID`',
+                '• `https://youtu.be/VIDEO_ID`',
+                '• `https://www.youtube.com/embed/VIDEO_ID`',
+                '• `https://m.youtube.com/watch?v=VIDEO_ID`'
+              ].join('\n'),
+              inline: false
+            },
+            {
+              name: '💡 How to get the URL',
+              value: [
+                '1. Go to the YouTube video',
+                '2. Click the "Share" button',
+                '3. Copy the URL (not the shortened link)',
+                '4. Paste it here'
+              ].join('\n'),
+              inline: false
+            },
+            {
+              name: '📝 Example',
+              value: '`/play url:https://www.youtube.com/watch?v=dQw4w9WgXcQ`',
+              inline: false
+            }
+          );
+
+        return interaction.editReply({ embeds: [errorEmbed] });
       }
 
-      const finalUrl = urlValidation.isValid ? urlValidation.normalizedUrl : url;
+      const finalUrl = urlValidation.normalizedUrl;
 
       try {
         // Get video info first with timeout
         const info = await Promise.race([
           ytdl.getInfo(finalUrl),
           new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('YouTube request timeout')), 10000)
+            setTimeout(() => reject(new Error('YouTube request timeout')), 15000)
           )
         ]);
 
@@ -1029,6 +1321,11 @@ const commands = [
 
         if (parseInt(info.videoDetails.lengthSeconds) > 36000) { // 10 hours
           return interaction.editReply('❌ Videos longer than 10 hours are not supported!');
+        }
+
+        // Check if video is age restricted
+        if (info.videoDetails.age_restricted) {
+          return interaction.editReply('❌ Age-restricted videos cannot be played.');
         }
 
         const song = {
@@ -1072,18 +1369,38 @@ const commands = [
         let errorMessage = '❌ Failed to play the song. ';
         
         if (error.message.includes('timeout')) {
-          errorMessage += 'YouTube took too long to respond. Please try again.';
+          errorMessage = '❌ YouTube took too long to respond. Please try again in a moment.';
         } else if (error.message.includes('Video unavailable')) {
-          errorMessage += 'This video is unavailable or restricted.';
+          errorMessage = '❌ This video is unavailable or has been removed.';
         } else if (error.message.includes('Private video')) {
-          errorMessage += 'This video is private.';
+          errorMessage = '❌ This video is private and cannot be accessed.';
         } else if (error.message.includes('Sign in to confirm')) {
-          errorMessage += 'This video is age-restricted and cannot be played.';
+          errorMessage = '❌ This video is age-restricted and cannot be played.';
+        } else if (error.message.includes('This video contains content from')) {
+          errorMessage = '❌ This video is blocked in your country or by copyright restrictions.';
+        } else if (error.message.includes('format is not available')) {
+          errorMessage = '❌ This video format is not available for playback.';
         } else {
-          errorMessage += 'Please try a different URL or try again later.';
+          errorMessage = '❌ An unexpected error occurred. Please try a different URL or try again later.';
         }
         
-        await interaction.editReply(errorMessage);
+        const errorEmbed = new EmbedBuilder()
+          .setTitle('❌ Playback Error')
+          .setColor(0xFF0000)
+          .setDescription(errorMessage)
+          .addFields(
+            {
+              name: '💡 Tips',
+              value: [
+                '• Try a different YouTube video',
+                '• Make sure the URL is correct',
+                '• Check if the video is publicly available',
+                '• Try again in a few minutes'
+              ].join('\n')
+            }
+          );
+
+        await interaction.editReply({ embeds: [errorEmbed] });
       }
     }
   },
@@ -1197,21 +1514,30 @@ const commands = [
     }
   },
 
-  // 🛡️ Moderation Commands
+  // 🛡️ Moderation Commands with Bilingual Support
   {
     name: 'automod',
-    description: 'Configure auto moderation',
+    description: 'Configure auto moderation (English & Arabic)',
     options: [
       {
         name: 'action', type: 3, description: 'What automod should do', required: true,
         choices: [
-          { name: 'Toggle', value: 'toggle' }, { name: 'Status', value: 'status' }, { name: 'Set Action', value: 'setaction' },
-          { name: 'Set Log Channel', value: 'setlog' }, { name: 'Add Word', value: 'addword' },
-          { name: 'Remove Word', value: 'removeword' }, { name: 'List Words', value: 'listwords' }
+          { name: 'Toggle', value: 'toggle' }, 
+          { name: 'Status', value: 'status' }, 
+          { name: 'Set Language', value: 'setlanguage' },
+          { name: 'Add Word', value: 'addword' },
+          { name: 'Remove Word', value: 'removeword' },
+          { name: 'List Words', value: 'listwords' },
+          { name: 'Settings', value: 'settings' }
         ]
       },
-      { name: 'value', type: 3, description: 'Value for setaction or word to add/remove', required: false },
-      { name: 'channel', type: 7, description: 'Channel for moderation logs', required: false, channel_types: [0] }
+      { name: 'value', type: 3, description: 'Value for the action', required: false },
+      { name: 'language', type: 3, description: 'Language for the word', required: false,
+        choices: [
+          { name: 'English', value: 'english' },
+          { name: 'Arabic', value: 'arabic' }
+        ]
+      }
     ],
     async execute(interaction) {
       if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
@@ -1220,7 +1546,7 @@ const commands = [
 
       const action = interaction.options.getString('action');
       const value = interaction.options.getString('value');
-      const channel = interaction.options.getChannel('channel');
+      const language = interaction.options.getString('language') || 'english';
 
       let embed;
 
@@ -1233,67 +1559,111 @@ const commands = [
             .setDescription(`Auto-moderation has been **${newStatus ? 'ENABLED' : 'DISABLED'}**`)
             .addFields(
               { name: 'Status', value: newStatus ? '✅ Enabled' : '❌ Disabled', inline: true },
-              { name: 'Banned Words', value: `${AutoModSystem.getBannedWords(interaction.guild.id).length}`, inline: true }
+              { name: 'Language Support', value: '🇺🇸 English & 🇸🇦 Arabic', inline: true }
             );
           break;
 
         case 'status':
           const isEnabled = AutoModSystem.isEnabled(interaction.guild.id);
           const words = AutoModSystem.getBannedWords(interaction.guild.id);
+          const config = getServerConfig(interaction.guild.id);
+          
           embed = new EmbedBuilder()
             .setTitle('🛡️ Auto-Moderation Status')
             .setColor(isEnabled ? 0x00FF00 : 0xFF0000)
             .addFields(
               { name: 'Status', value: isEnabled ? '✅ Enabled' : '❌ Disabled', inline: true },
-              { name: 'Banned Words', value: `${words.length}`, inline: true },
-              { name: 'Words List', value: words.length > 0 ? words.join(', ') : 'No words added', inline: false }
+              { name: 'English Words', value: `${words.english.length}`, inline: true },
+              { name: 'Arabic Words', value: `${words.arabic.length}`, inline: true },
+              { name: 'Check English', value: config.autoModSettings.checkEnglish ? '✅' : '❌', inline: true },
+              { name: 'Check Arabic', value: config.autoModSettings.checkArabic ? '✅' : '❌', inline: true },
+              { name: 'Max Warnings', value: `${config.autoModSettings.maxWarnings}`, inline: true }
             );
+          break;
+
+        case 'setlanguage':
+          if (!value) {
+            return interaction.reply({ content: '❌ Please specify which language to toggle (english/arabic).', flags: 64 });
+          }
+          
+          const configLang = getServerConfig(interaction.guild.id);
+          if (value === 'english') {
+            configLang.autoModSettings.checkEnglish = !configLang.autoModSettings.checkEnglish;
+            embed = new EmbedBuilder()
+              .setTitle('🛡️ Auto-Moderation')
+              .setColor(configLang.autoModSettings.checkEnglish ? 0x00FF00 : 0xFF0000)
+              .setDescription(`English content checking **${configLang.autoModSettings.checkEnglish ? 'ENABLED' : 'DISABLED'}**`);
+          } else if (value === 'arabic') {
+            configLang.autoModSettings.checkArabic = !configLang.autoModSettings.checkArabic;
+            embed = new EmbedBuilder()
+              .setTitle('🛡️ Auto-Moderation')
+              .setColor(configLang.autoModSettings.checkArabic ? 0x00FF00 : 0xFF0000)
+              .setDescription(`Arabic content checking **${configLang.autoModSettings.checkArabic ? 'ENABLED' : 'DISABLED'}**`);
+          } else {
+            return interaction.reply({ content: '❌ Invalid language. Use "english" or "arabic".', flags: 64 });
+          }
+          await saveConfig();
           break;
 
         case 'addword':
           if (!value) {
             return interaction.reply({ content: '❌ Please provide a word to add.', flags: 64 });
           }
-          const added = AutoModSystem.addBannedWord(interaction.guild.id, value);
+          const added = AutoModSystem.addBannedWord(interaction.guild.id, value, language);
           embed = new EmbedBuilder()
             .setTitle('🛡️ Auto-Moderation')
             .setColor(added ? 0x00FF00 : 0xFF0000)
-            .setDescription(added ? `✅ Added "${value}" to banned words` : `❌ "${value}" is already in the list`);
+            .setDescription(added ? 
+              `✅ Added "${value}" to ${language} banned words` : 
+              `❌ "${value}" is already in the ${language} list`
+            );
           break;
 
         case 'removeword':
           if (!value) {
             return interaction.reply({ content: '❌ Please provide a word to remove.', flags: 64 });
           }
-          const removed = AutoModSystem.removeBannedWord(interaction.guild.id, value);
+          const removed = AutoModSystem.removeBannedWord(interaction.guild.id, value, language);
           embed = new EmbedBuilder()
             .setTitle('🛡️ Auto-Moderation')
             .setColor(removed ? 0x00FF00 : 0xFF0000)
-            .setDescription(removed ? `✅ Removed "${value}" from banned words` : `❌ "${value}" not found in the list`);
+            .setDescription(removed ? 
+              `✅ Removed "${value}" from ${language} banned words` : 
+              `❌ "${value}" not found in the ${language} list`
+            );
           break;
 
         case 'listwords':
           const bannedWords = AutoModSystem.getBannedWords(interaction.guild.id);
+          const englishWords = bannedWords.english.slice(0, 20).join(', ') || 'No words';
+          const arabicWords = bannedWords.arabic.slice(0, 20).join(', ') || 'No words';
+          
           embed = new EmbedBuilder()
             .setTitle('🛡️ Banned Words List')
             .setColor(0x3498DB)
-            .setDescription(bannedWords.length > 0 ? bannedWords.join(', ') : 'No banned words configured')
             .addFields(
-              { name: 'Total Words', value: `${bannedWords.length}`, inline: true }
+              { name: '🇺🇸 English Words', value: englishWords, inline: false },
+              { name: '🇸🇦 Arabic Words', value: arabicWords, inline: false },
+              { name: 'Total English', value: `${bannedWords.english.length}`, inline: true },
+              { name: 'Total Arabic', value: `${bannedWords.arabic.length}`, inline: true }
             );
           break;
 
-        case 'setlog':
-          if (!channel) {
-            return interaction.reply({ content: '❌ Please provide a channel.', flags: 64 });
-          }
-          const config = getServerConfig(interaction.guild.id);
-          config.logChannel = channel.id;
-          await saveConfig();
+        case 'settings':
+          const settings = getServerConfig(interaction.guild.id).autoModSettings;
           embed = new EmbedBuilder()
-            .setTitle('🛡️ Auto-Moderation')
-            .setColor(0x00FF00)
-            .setDescription(`✅ Log channel set to ${channel}`);
+            .setTitle('🛡️ Auto-Moderation Settings')
+            .setColor(0x3498DB)
+            .addFields(
+              { name: 'Enabled', value: settings.enabled ? '✅' : '❌', inline: true },
+              { name: 'Check English', value: settings.checkEnglish ? '✅' : '❌', inline: true },
+              { name: 'Check Arabic', value: settings.checkArabic ? '✅' : '❌', inline: true },
+              { name: 'Delete Messages', value: settings.deleteMessages ? '✅' : '❌', inline: true },
+              { name: 'Warn Users', value: settings.warnUsers ? '✅' : '❌', inline: true },
+              { name: 'Log Actions', value: settings.logActions ? '✅' : '❌', inline: true },
+              { name: 'Max Warnings', value: `${settings.maxWarnings}`, inline: true },
+              { name: 'Mute Duration', value: `${settings.muteDuration} minutes`, inline: true }
+            );
           break;
 
         default:
@@ -1511,11 +1881,13 @@ const commands = [
         setupResults.push('✅ Log channel set');
       }
 
-      await saveConfig();
+      // Enable auto-mod with bilingual support
+      config.autoModSettings.enabled = true;
+      config.autoModSettings.checkEnglish = true;
+      config.autoModSettings.checkArabic = true;
+      setupResults.push('✅ Auto-moderation enabled (English & Arabic)');
 
-      // Enable auto-mod
-      AutoModSystem.toggle(interaction.guild.id);
-      setupResults.push('✅ Auto-moderation enabled');
+      await saveConfig();
 
       const embed = new EmbedBuilder()
         .setTitle('⚙️ Automated Setup Complete')
@@ -1735,8 +2107,8 @@ const commands = [
       }
 
       const config = getServerConfig(interaction.guild.id);
-      const autoModStatus = AutoModSystem.isEnabled(interaction.guild.id);
-      const bannedWordsCount = AutoModSystem.getBannedWords(interaction.guild.id).length;
+      const autoModSettings = config.autoModSettings;
+      const bannedWordsList = AutoModSystem.getBannedWords(interaction.guild.id);
       const rulesCount = RulesSystem.getRules(interaction.guild.id).length;
 
       const embed = new EmbedBuilder()
@@ -1749,10 +2121,11 @@ const commands = [
           { name: 'Auto Role', value: config.autoRole ? `<@&${config.autoRole}>` : '❌ Not set', inline: true },
           { name: 'Verification Channel', value: config.verificationChannel ? `<#${config.verificationChannel}>` : '❌ Not set', inline: true },
           { name: 'Verification Role', value: config.verificationRole ? `<@&${config.verificationRole}>` : '❌ Not set', inline: true },
-          { name: 'Welcome Messages', value: config.enableWelcome ? '✅ Enabled' : '❌ Disabled', inline: true },
-          { name: 'Goodbye Messages', value: config.enableGoodbye ? '✅ Enabled' : '❌ Disabled', inline: true },
-          { name: 'Auto-Moderation', value: autoModStatus ? '✅ Enabled' : '❌ Disabled', inline: true },
-          { name: 'Banned Words', value: `${bannedWordsCount}`, inline: true },
+          { name: 'Auto-Mod Status', value: autoModSettings.enabled ? '✅ Enabled' : '❌ Disabled', inline: true },
+          { name: 'Check English', value: autoModSettings.checkEnglish ? '✅' : '❌', inline: true },
+          { name: 'Check Arabic', value: autoModSettings.checkArabic ? '✅' : '❌', inline: true },
+          { name: 'English Words', value: `${bannedWordsList.english.length}`, inline: true },
+          { name: 'Arabic Words', value: `${bannedWordsList.arabic.length}`, inline: true },
           { name: 'Server Rules', value: `${rulesCount}`, inline: true }
         )
         .setFooter({ text: 'Use /setup-automated to configure multiple features' })
@@ -1865,6 +2238,7 @@ We're glad to have you here! You are member #${memberCount}.
 **Features:**
 • Music System - Play songs in voice channels
 • Welcome Messages - Personalized greetings
+• Auto-moderation (English & Arabic)
 • Easy to use commands
 
 **Quick Start:**
@@ -1973,15 +2347,15 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   }
 });
 
-// Message content handler for auto-moderation
+// Message content handler for bilingual auto-moderation
 client.on('messageCreate', async (message) => {
   // Ignore bot messages and DMs
   if (message.author.bot || !message.guild) return;
 
-  // Auto-moderation check
-  const bannedWord = AutoModSystem.checkMessage(message.content, message.guild.id);
-  if (bannedWord) {
-    await AutoModSystem.handleViolation(message, bannedWord);
+  // Bilingual auto-moderation check
+  const violationResult = BilingualAutoMod.checkMessage(message.content, message.guild.id);
+  if (violationResult) {
+    await AutoModSystem.handleViolation(message, violationResult);
     return;
   }
 
