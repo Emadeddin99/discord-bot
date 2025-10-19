@@ -3,13 +3,15 @@
   "version": "3.0.0",
   "description": "A comprehensive Discord bot with music, leveling, moderation, auto-moderation, welcome system, and utility commands",
   "main": "index.js",
+  
+
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
     "deploy": "node deploy-commands.js",
     "deploy:global": "node deploy-commands.js",
     "deploy:guild": "node deploy-commands-guild.js",
-    "deploy:render": "node deploy-commands.js",
+    "deploy:all": "npm run deploy:global && npm run deploy:guild",
     "test": "echo \"No tests specified\" && exit 0",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

@@ -357,10 +357,19 @@ const commands = [
       await interaction.editReply({ content: null, embeds: [embed] });
     }
   },
-  {
+    {
     name: 'help',
     description: 'Show all available commands',
     async execute(interaction) {
+      // Check if we need to defer or can reply immediately
+      let deferred = false;
+      
+      // For commands that might take time, defer first
+      if (!interaction.deferred && !interaction.replied) {
+        await interaction.deferReply();
+        deferred = true;
+      }
+
       const embed = new EmbedBuilder()
         .setTitle('🤖 Bot Help Menu')
         .setColor(0x3498DB)
@@ -372,9 +381,17 @@ const commands = [
         )
         .setFooter({ text: 'Use slash commands (/) to interact with the bot!' });
 
-      await interaction.reply({ embeds: [embed] });
+      try {
+        if (deferred) {
+          await interaction.editReply({ embeds: [embed] });
+        } else {
+          await interaction.reply({ embeds: [embed] });
+        }
+      } catch (error) {
+        console.error('Error sending help response:', error);
+      }
     }
-  },
+  },,
   {
     name: 'join',
     description: 'Join a specific voice channel',
@@ -956,6 +973,7 @@ client.on('guildMemberRemove', async (member) => {
 });
 
 // Unified interaction handler — faster and safer
+// Unified interaction handler — fixed version
 client.on('interactionCreate', async (interaction) => {
   try {
     // Handle slash commands
@@ -963,29 +981,35 @@ client.on('interactionCreate', async (interaction) => {
       const command = client.commands.get(interaction.commandName);
       if (!command) return;
 
-      // Immediately defer so Discord knows we're alive
-      if (!interaction.deferred && !interaction.replied) {
-        await interaction.deferReply();
-      }
+      console.log(`🔧 Executing command: /${interaction.commandName} by ${interaction.user.tag}`);
 
-      // Run the command logic
-      await command.execute(interaction).catch(async (err) => {
-        console.error(`Command error in /${interaction.commandName}:`, err);
-        if (!interaction.replied) {
-          await interaction.editReply('❌ Something went wrong while executing that command.');
+      try {
+        await command.execute(interaction);
+      } catch (error) {
+        console.error(`❌ Command error in /${interaction.commandName}:`, error);
+        
+        // Safe error response
+        try {
+          if (interaction.deferred || interaction.replied) {
+            await interaction.editReply({ 
+              content: '❌ Something went wrong while executing that command.',
+              embeds: [],
+              components: []
+            });
+          } else {
+            await interaction.reply({ 
+              content: '❌ Something went wrong while executing that command.',
+              flags: 64 
+            });
+          }
+        } catch (responseError) {
+          console.error('❌ Failed to send error response:', responseError);
         }
-      });
-
+      }
       return;
     }
   } catch (error) {
-    console.error('Interaction handler error:', error);
-    if (interaction.isRepliable()) {
-      const msg = '❌ A critical error occurred handling this interaction.';
-      interaction.deferred || interaction.replied
-        ? await interaction.editReply(msg)
-        : await interaction.reply({ content: msg, ephemeral: true });
-    }
+    console.error('❌ Interaction handler error:', error);
   }
 });
 
