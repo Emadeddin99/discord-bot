@@ -7,6 +7,7 @@ console.log('DISCORD_BOT_TOKEN:', process.env.DISCORD_BOT_TOKEN ? '✅ Set' : '�
 console.log('CLIENT_ID:', process.env.CLIENT_ID ? '✅ Set' : '❌ NOT SET');
 
 // USER-FACING COMMANDS ONLY - Available in ALL servers
+// Updated to match your main code structure
 const commands = [
   // 🎪 General Commands
   {
@@ -17,37 +18,20 @@ const commands = [
     name: 'help',
     description: 'Show all available commands'
   },
-  {
-    name: 'server-info',
-    description: 'Get detailed server information'
-  },
-  {
-    name: 'user-info',
-    description: 'Get information about a user',
-    options: [
-      {
-        name: 'user', type: 6, description: 'The user to get info about', required: false
-      }
-    ]
-  },
-  {
-    name: 'avatar',
-    description: "Get a user's avatar",
-    options: [
-      {
-        name: 'user', type: 6, description: 'The user to get the avatar of', required: false
-      }
-    ]
-  },
-  {
-    name: 'membercount',
-    description: 'Show the current member count'
-  },
 
   // 🎵 Music Commands
   {
     name: 'join',
-    description: 'Join your voice channel'
+    description: 'Join a specific voice channel',
+    options: [
+      {
+        name: 'channel',
+        type: 7,
+        description: 'The voice channel to join',
+        required: true,
+        channel_types: [2]
+      }
+    ]
   },
   {
     name: 'leave',
@@ -89,19 +73,34 @@ const commands = [
     description: 'Show the currently playing song'
   },
 
-  // 📊 Leveling Commands
+  // ⚙️ Admin Commands (keeping only the ones in your main code)
   {
-    name: 'level',
-    description: 'Check your level or another user\'s level',
+    name: 'setwelcome',
+    description: 'Set the welcome channel for this server',
     options: [
       {
-        name: 'user', type: 6, description: 'The user to check level for', required: false
+        name: 'channel', type: 7, description: 'The channel to send welcome messages to', required: true, channel_types: [0]
+      },
+      {
+        name: 'message', type: 3, description: 'Custom welcome message (use {user} for mention, {server} for server name, {count} for member count)', required: false
       }
     ]
   },
   {
-    name: 'leaderboard',
-    description: 'Show the server level leaderboard'
+    name: 'setgoodbye',
+    description: 'Set the goodbye channel for this server',
+    options: [
+      {
+        name: 'channel', type: 7, description: 'The channel to send goodbye messages to', required: true, channel_types: [0]
+      },
+      {
+        name: 'message', type: 3, description: 'Custom goodbye message (use {user} for mention, {server} for server name, {count} for member count)', required: false
+      }
+    ]
+  },
+  {
+    name: 'config',
+    description: 'View the current bot configuration'
   }
 ];
 
@@ -132,12 +131,12 @@ async function deployGlobalCommands() {
     console.log(`✅ SUCCESS: Deployed ${data.length} global commands!`);
     
     console.log('\n🎯 Available Commands:');
-    console.log('   🎵 Music: /play, /skip, /stop, /queue, /volume, /nowplaying');
-    console.log('   📊 Leveling: /level, /leaderboard');
-    console.log('   🎪 General: /ping, /help, /server-info, /user-info');
+    console.log('   🎵 Music: /join, /leave, /play, /skip, /stop, /queue, /volume, /nowplaying');
+    console.log('   ⚙️  Admin: /setwelcome, /setgoodbye, /config');
+    console.log('   🎪 General: /ping, /help');
     
     console.log('\n⏰ Note: Global commands may take up to 1 hour to appear in all servers');
-    console.log('🌐 Use /deploy-guild for instant testing in specific servers');
+    console.log('🌐 Use deploy-commands-guild.js for instant testing in specific servers');
     
     return true;
 
