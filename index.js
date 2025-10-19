@@ -404,27 +404,45 @@ class MusicSystem {
 }
 
 // Enhanced Auto-Moderation Functions
-function containsBannedWords(text, config) {
-  const lowerText = text.toLowerCase();
-  const allBannedWords = [
-    ...GLOBAL_BANNED_WORDS.english,
-    ...GLOBAL_BANNED_WORDS.arabic,
-    ...config.automod.bannedWords
-  ];
+// Optimized Auto-Moderation (faster, smarter)
+const GLOBAL_BANNED_WORDS_SET = new Set(
+  [...GLOBAL_BANNED_WORDS.english, ...GLOBAL_BANNED_WORDS.arabic].map(w => w.toLowerCase())
+);
+const userLastScan = new Map();
+let pendingSave = false;
 
-  for (const word of allBannedWords) {
-    if (word && lowerText.includes(word.toLowerCase())) {
-      return { found: true, word: word };
-    }
+function shouldScanMessage(userId) {
+  const now = Date.now();
+  const last = userLastScan.get(userId) || 0;
+  if (now - last < 1500) return false; // Skip if user messaged too recently
+  userLastScan.set(userId, now);
+  return true;
+}
+
+function scheduleSave() {
+  if (pendingSave) return;
+  pendingSave = true;
+  setTimeout(async () => {
+    await saveConfig().catch(console.error);
+    pendingSave = false;
+  }, 15000);
+}
+
+function containsBannedWords(text, config) {
+  const lower = text.toLowerCase();
+  const words = lower.split(/\s+/);
+  for (const word of words) {
+    if (GLOBAL_BANNED_WORDS_SET.has(word)) return { found: true, word };
+    if (config.automod.bannedWords.some(b => word.includes(b.toLowerCase())))
+      return { found: true, word };
   }
   return { found: false };
 }
 
 function hasExcessiveCaps(text, percentage = 70) {
   if (text.length < 10) return false;
-  const capsCount = (text.match(/[A-Z]/g) || []).length;
-  const capsPercentage = (capsCount / text.length) * 100;
-  return capsPercentage > percentage;
+  const caps = (text.match(/[A-Z]/g) || []).length;
+  return (caps / text.length) * 100 > percentage;
 }
 
 function hasExcessiveMentions(text, maxMentions = 5) {
@@ -433,44 +451,29 @@ function hasExcessiveMentions(text, maxMentions = 5) {
 }
 
 function containsInviteLinks(text) {
-  const inviteRegex = /(discord\.gg\/|discordapp\.com\/invite\/|discord\.com\/invite\/)/i;
-  return inviteRegex.test(text);
+  return /(discord\.gg\/|discordapp\.com\/invite\/|discord\.com\/invite\/)/i.test(text);
 }
 
-function isSpam(userId, guildId) {
-  const key = `${guildId}-${userId}`;
+const spamTracker = new Map();
+function isSpam(userId) {
   const now = Date.now();
-  
-  if (!messageCounts.has(key)) {
-    messageCounts.set(key, []);
-  }
-  
-  const userMessages = messageCounts.get(key);
-  userMessages.push(now);
-  
-  const recentMessages = userMessages.filter(time => now - time < 5000);
-  messageCounts.set(key, recentMessages);
-  
-  return recentMessages.length > 5;
+  const user = spamTracker.get(userId) || { last: 0, count: 0 };
+  if (now - user.last < 5000) user.count++;
+  else user.count = 1;
+  user.last = now;
+  spamTracker.set(userId, user);
+  return user.count > 5;
 }
 
 async function handleModAction(message, reason, config) {
   try {
     const userId = message.author.id;
     const guildId = message.guild.id;
-    
-    if (!serverConfigs[guildId].warnings[userId]) {
-      serverConfigs[guildId].warnings[userId] = 0;
-    }
-    
-    serverConfigs[guildId].warnings[userId]++;
+
+    serverConfigs[guildId].warnings[userId] = (serverConfigs[guildId].warnings[userId] || 0) + 1;
     const strikes = serverConfigs[guildId].warnings[userId];
 
-    try {
-      await message.delete();
-    } catch (error) {
-      console.log('Could not delete message:', error.message);
-    }
+    await message.delete().catch(() => {});
 
     const logEmbed = new EmbedBuilder()
       .setTitle('🛡️ Auto-Moderation Action')
@@ -495,23 +498,19 @@ async function handleModAction(message, reason, config) {
         )
         .setFooter({ text: 'Please follow the server rules' })
         .setTimestamp();
-      
-      await message.author.send({ embeds: [userEmbed] });
-    } catch (error) {
-      logEmbed.addFields({ name: '📨 DM Status', value: 'Failed to send DM', inline: true });
-    }
+      await message.author.send({ embeds: [userEmbed] }).catch(() => {});
+    } catch {}
 
-    await sendModLog(message.guild, logEmbed);
+    setImmediate(() => sendModLog(message.guild, logEmbed));
 
     if (strikes >= config.automod.strikeLimit) {
       await executeModAction(message.member, config.automod.action, config);
       serverConfigs[guildId].warnings[userId] = 0;
     }
 
-    await saveConfig();
-
-  } catch (error) {
-    console.error('Error in handleModAction:', error);
+    scheduleSave();
+  } catch (err) {
+    console.error('Error in handleModAction:', err);
   }
 }
 
@@ -539,24 +538,51 @@ async function executeModAction(member, action, config) {
       default:
         return 'Warned';
     }
-  } catch (error) {
-    console.error('Error executing mod action:', error);
+  } catch (err) {
+    console.error('Error executing mod action:', err);
     return 'Action failed';
   }
 }
 
 async function sendModLog(guild, embed) {
-  try {
-    const config = getServerConfig(guild.id);
-    if (!config.modLogChannel) return;
-    
-    const logChannel = guild.channels.cache.get(config.modLogChannel);
-    if (logChannel) {
-      await logChannel.send({ embeds: [embed] });
-    }
-  } catch (error) {
-    console.error('Error sending mod log:', error);
-  }
+  const config = getServerConfig(guild.id);
+  if (!config.modLogChannel) return;
+  const logChannel = guild.channels.cache.get(config.modLogChannel);
+  if (!logChannel) return;
+  setImmediate(() => {
+    logChannel.send({ embeds: [embed] }).catch(err => console.error('Log error:', err));
+  });
+}
+
+async function handleAutoMod(message) {
+  if (!message.guild || message.author.bot) return;
+  if (!shouldScanMessage(message.author.id)) return;
+
+  const config = getServerConfig(message.guild.id);
+  if (!config.automod.enabled) return;
+  if (message.member.permissions.has('ManageMessages')) return;
+  if (message.content.length < 4) return;
+
+  const content = message.content;
+  const violations = [];
+
+  const bannedWordCheck = containsBannedWords(content, config);
+  if (bannedWordCheck.found) violations.push(`Banned word: "${bannedWordCheck.word}"`);
+
+  if (config.automod.antiSpam && isSpam(message.author.id)) 
+    violations.push('Spam detection (too many messages)');
+
+  if (config.automod.antiMention && hasExcessiveMentions(content, config.automod.maxMentions))
+    violations.push(`Excessive mentions (>${config.automod.maxMentions})`);
+
+  if (config.automod.antiCaps && hasExcessiveCaps(content, config.automod.capsPercentage))
+    violations.push('Excessive capital letters');
+
+  if (config.automod.antiInvites && containsInviteLinks(content))
+    violations.push('Discord invite links');
+
+  if (violations.length > 0)
+    await handleModAction(message, violations.join(', '), config);
 }
 
 // Enhanced Voice Connection
@@ -1480,58 +1506,69 @@ client.on('guildMemberRemove', async (member) => {
   await sendGoodbyeMessage(member);
 });
 
-// Interaction handler for slash commands
+// Unified interaction handler — faster and safer
 client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-
-  const command = client.commands.get(interaction.commandName);
-  if (!command) return;
-
   try {
-    await command.execute(interaction);
-  } catch (error) {
-    console.error(`Error executing command ${interaction.commandName}:`, error);
-    await interaction.reply({ 
-      content: '❌ There was an error executing this command!', 
-      ephemeral: true 
-    });
-  }
-});
+    // Handle slash commands
+    if (interaction.isChatInputCommand()) {
+      const command = client.commands.get(interaction.commandName);
+      if (!command) return;
 
-// Button interactions
-client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isButton()) return;
+      // Immediately defer so Discord knows we're alive
+      if (!interaction.deferred && !interaction.replied) {
+        // Use ephemeral replies for mod/admin stuff if desired
+        const ephemeral = ['setup-automated', 'warn', 'clear'].includes(interaction.commandName);
+        await interaction.deferReply({ ephemeral });
+      }
 
-  const config = getServerConfig(interaction.guild.id);
-
-  if (interaction.customId === 'agree_rules') {
-    try {
-      await interaction.reply({ 
-        content: '✅ Thank you for agreeing to the server rules! Enjoy your stay!', 
-        ephemeral: true 
+      // Run the command logic
+      await command.execute(interaction).catch(async (err) => {
+        console.error(`Command error in /${interaction.commandName}:`, err);
+        if (!interaction.replied) {
+          await interaction.editReply('❌ Something went wrong while executing that command.');
+        }
       });
-    } catch (error) {
-      console.error('Error handling rules agreement:', error);
+
+      return;
     }
-  }
 
-  if (interaction.customId === 'start_verification') {
-    if (!config.verification.enabled) return;
+    // Handle button interactions (verification, rules, etc.)
+    if (interaction.isButton()) {
+      const config = getServerConfig(interaction.guild.id);
 
-    try {
-      const role = interaction.guild.roles.cache.get(config.verification.role);
-      if (role && interaction.member) {
-        await interaction.member.roles.add(role);
-        await interaction.reply({ 
-          content: '✅ Verification successful! You now have access to the server.', 
-          ephemeral: true 
+      if (interaction.customId === 'agree_rules') {
+        await interaction.reply({
+          content: '✅ Thank you for agreeing to the server rules! Enjoy your stay!',
+          ephemeral: true,
         });
       }
-    } catch (error) {
-      await interaction.reply({ 
-        content: '❌ Verification failed. Please contact an administrator.', 
-        ephemeral: true 
-      });
+
+      if (interaction.customId === 'start_verification' && config.verification.enabled) {
+        try {
+          const role = interaction.guild.roles.cache.get(config.verification.role);
+          if (role && interaction.member) {
+            await interaction.member.roles.add(role);
+            await interaction.reply({
+              content: '✅ Verification successful! You now have access to the server.',
+              ephemeral: true,
+            });
+          }
+        } catch (err) {
+          console.error('Verification error:', err);
+          await interaction.reply({
+            content: '❌ Verification failed. Please contact an administrator.',
+            ephemeral: true,
+          });
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Interaction handler error:', error);
+    if (interaction.isRepliable()) {
+      const msg = '❌ A critical error occurred handling this interaction.';
+      interaction.deferred || interaction.replied
+        ? await interaction.editReply(msg)
+        : await interaction.reply({ content: msg, ephemeral: true });
     }
   }
 });
