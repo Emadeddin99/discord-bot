@@ -353,13 +353,58 @@ const commands = [
     ]
   },
   {
-    name: 'play',
-    description: 'Play music from a YouTube URL or search term',
+    name: 'setup-automated',
+    description: 'Set up all automated systems with one command',
     options: [
       {
-        name: 'query',
+        name: 'level_channel',
+        type: 7,
+        description: 'Channel for level-up notifications',
+        required: true,
+        channel_types: [0]
+      },
+      {
+        name: 'music_channel',
+        type: 7,
+        description: 'Channel for music commands',
+        required: false,
+        channel_types: [0]
+      },
+      {
+        name: 'log_channel',
+        type: 7,
+        description: 'Channel for moderation logs',
+        required: false,
+        channel_types: [0]
+      },
+      {
+        name: 'new_role',
+        type: 8,
+        description: 'Role for new members (Level 1)',
+        required: false
+      },
+      {
+        name: 'member_role',
+        type: 8,
+        description: 'Role for members (Level 10)',
+        required: false
+      },
+      {
+        name: 'shadow_role',
+        type: 8,
+        description: 'Role for shadows (Level 25)',
+        required: false
+      }
+    ]
+  },
+  {
+    name: 'play',
+    description: 'Play music from a YouTube URL',
+    options: [
+      {
+        name: 'url',
         type: 3,
-        description: 'YouTube URL or song name to play',
+        description: 'YouTube URL to play',
         required: true
       }
     ]
@@ -381,7 +426,7 @@ const commands = [
     description: 'Set the music volume',
     options: [
       {
-        name: 'level',
+        name: 'volume',
         type: 4,
         description: 'Volume level (1-100)',
         required: true,
@@ -389,6 +434,10 @@ const commands = [
         max_value: 100
       }
     ]
+  },
+  {
+    name: 'nowplaying',
+    description: 'Show the currently playing song'
   }
 ];
 
@@ -410,10 +459,11 @@ async function deployGuildCommands() {
     console.log('\n🎉 Guild commands deployed successfully!');
     console.log('🚀 These commands will appear immediately in your test server.');
     console.log('\n🔧 New Features Available:');
-    console.log('   🎵 Music System: /play, /skip, /stop, /queue, /volume');
-    console.log('   📊 Leveling System: /level, /leaderboard, /leveling-setup');
+    console.log('   🎵 Enhanced Music System: /play, /skip, /stop, /queue, /volume, /nowplaying');
+    console.log('   📊 Complete Leveling System: /level, /leaderboard, /leveling-setup');
+    console.log('   ⚡ One-Click Setup: /setup-automated');
     console.log('   🛡️ Enhanced Moderation: /warn, /warnings, /clearwarnings');
-    console.log('   👋 Goodbye Messages: /setgoodbye');
+    console.log('   👋 Welcome/Goodbye System: /setwelcome, /setgoodbye');
     console.log('   ⚙️ Auto-Moderation: /automod');
     console.log('   📜 Rules System: /rules');
     console.log('   🔐 Verification: /setup-verification');

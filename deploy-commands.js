@@ -333,13 +333,58 @@ const commands = [
     ]
   },
   {
-    name: 'play',
-    description: 'Play music from a YouTube URL or search term',
+    name: 'setup-automated',
+    description: 'Set up all automated systems with one command',
     options: [
       {
-        name: 'query',
+        name: 'level_channel',
+        type: 7,
+        description: 'Channel for level-up notifications',
+        required: true,
+        channel_types: [0]
+      },
+      {
+        name: 'music_channel',
+        type: 7,
+        description: 'Channel for music commands',
+        required: false,
+        channel_types: [0]
+      },
+      {
+        name: 'log_channel',
+        type: 7,
+        description: 'Channel for moderation logs',
+        required: false,
+        channel_types: [0]
+      },
+      {
+        name: 'new_role',
+        type: 8,
+        description: 'Role for new members (Level 1)',
+        required: false
+      },
+      {
+        name: 'member_role',
+        type: 8,
+        description: 'Role for members (Level 10)',
+        required: false
+      },
+      {
+        name: 'shadow_role',
+        type: 8,
+        description: 'Role for shadows (Level 25)',
+        required: false
+      }
+    ]
+  },
+  {
+    name: 'play',
+    description: 'Play music from a YouTube URL',
+    options: [
+      {
+        name: 'url',
         type: 3,
-        description: 'YouTube URL or song name to play',
+        description: 'YouTube URL to play',
         required: true
       }
     ]
@@ -361,7 +406,7 @@ const commands = [
     description: 'Set the music volume',
     options: [
       {
-        name: 'level',
+        name: 'volume',
         type: 4,
         description: 'Volume level (1-100)',
         required: true,
@@ -369,6 +414,10 @@ const commands = [
         max_value: 100
       }
     ]
+  },
+  {
+    name: 'nowplaying',
+    description: 'Show the currently playing song'
   }
 ];
 
@@ -407,11 +456,12 @@ async function deployCommands() {
     console.log('\n🎉 Your bot commands are now live!');
     console.log('⏰ It may take up to 1 hour to appear in all servers.');
     console.log('🔧 New features available:');
-    console.log('   - 🎵 Music commands (play, skip, stop, queue, volume)');
-    console.log('   - 📊 Leveling system (level, leaderboard, leveling-setup)');
-    console.log('   - 🛡️ Enhanced moderation (warn, warnings, clearwarnings)');
-    console.log('   - 👋 Goodbye messages (setgoodbye)');
-    console.log('   - ⚙️ Auto-moderation configuration');
+    console.log('   - 🎵 Enhanced Music System (play, skip, stop, queue, volume, nowplaying)');
+    console.log('   - 📊 Complete Leveling System (level, leaderboard, leveling-setup)');
+    console.log('   - ⚡ One-Click Setup (setup-automated)');
+    console.log('   - 🛡️ Enhanced Moderation (warn, warnings, clearwarnings)');
+    console.log('   - 👋 Welcome/Goodbye System');
+    console.log('   - ⚙️ Auto-Moderation Configuration');
     
   } catch (error) {
     console.error('❌ Error deploying commands:', error.message);

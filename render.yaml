@@ -8,7 +8,7 @@ services:
     # Build and deployment settings
     buildCommand: |
       npm install
-      npm run deploy
+      npm run deploy:render
     startCommand: npm start
     autoDeploy: true
     
@@ -26,6 +26,16 @@ services:
         value: 3000
       - key: NODE_ENV
         value: production
+      - key: ROLE_NEW
+        sync: false
+      - key: ROLE_MEMBER
+        sync: false
+      - key: ROLE_SHADOW
+        sync: false
+      - key: LEVEL_THRESHOLD_MEMBER
+        value: "10"
+      - key: LEVEL_THRESHOLD_SHADOW
+        value: "25"
     
     # Health check and monitoring
     healthCheckPath: /health
