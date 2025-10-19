@@ -1,53 +1,34 @@
-# Discord Bot
+# Discord Bot v3.0.0
 
-A feature-rich Discord bot with moderation, music, and utility commands.
+A comprehensive Discord bot with music, moderation, auto-moderation, welcome system, and utility commands.
 
 ## Features
 
-- 🤖 Slash commands
-- 🎵 Music functionality
-- ⚙️ Server configuration
-- 👋 Welcome messages
-- 🛠️ Moderation tools
-- 🔐 Verification system
+- 🎵 **Music System**: Play YouTube music in voice channels
+- 🛡️ **Auto-Moderation**: Bilingual (English & Arabic) content filtering
+- 👋 **Welcome System**: Customizable welcome messages and auto-roles
+- ✅ **Verification System**: Button-based member verification
+- 📜 **Rules System**: Manage and display server rules
+- ⚡ **Slash Commands**: Modern Discord interaction system
+- 🌐 **Health Checks**: HTTP endpoints for monitoring
 
 ## Setup
 
-### 1. Prerequisites
-
-- Node.js 18 or higher
-- Discord Bot Token
-- Git
-
-### 2. Local Development
-
 1. Clone the repository
 2. Install dependencies: `npm install`
-3. Copy `.env.example` to `.env` and fill in your values
-4. Run locally: `npm run dev`
-
-### 3. Deploy to Render
-
-1. Push your code to GitHub
-2. Connect your repository to Render
-3. Set environment variables in Render dashboard
-4. Deploy!
+3. Copy `.env.example` to `.env` and fill in your credentials
+4. Deploy commands:
+   - Global: `npm run deploy:global`
+   - Guild (for testing): `npm run deploy:guild`
+5. Start the bot: `npm start`
 
 ## Environment Variables
 
-- `DISCORD_BOT_TOKEN` - Your Discord bot token
-- `CLIENT_ID` - Your bot's client ID
-- `YOUR_USER_ID` - Your Discord user ID
+- `DISCORD_BOT_TOKEN`: Your Discord bot token
+- `CLIENT_ID`: Your bot's client ID
+- `GUILD_ID`: Your test server ID (for guild commands)
+- `PORT`: Server port (default: 3000)
 
-## Commands
+## Deployment
 
-- `/ping` - Check bot latency
-- `/help` - Show help menu
-- `/server-info` - Get server information
-- `/setwelcome` - Set welcome channel
-- `/spotify` - Music controls
-- `/clear` - Clear messages
-
-## Support
-
-For issues and questions, please open an issue on GitHub.
+The bot is configured for deployment on Render.com. Make sure to set all environment variables in your Render dashboard.

@@ -8,7 +8,6 @@ console.log('CLIENT_ID:', process.env.CLIENT_ID ? '✅ Set' : '❌ NOT SET');
 console.log('GUILD_ID:', process.env.GUILD_ID ? '✅ Set' : '❌ NOT SET');
 
 // ADMIN/CONFIGURATION COMMANDS ONLY - For testing and setup
-// Updated to match all admin features
 const commands = [
   // ⚙️ Setup Commands
   {
@@ -37,22 +36,6 @@ const commands = [
   },
 
   // 🛡️ Moderation Commands
-  {
-    name: 'automod',
-    description: 'Configure auto moderation',
-    options: [
-      {
-        name: 'action', type: 3, description: 'What automod should do', required: true,
-        choices: [
-          { name: 'Toggle', value: 'toggle' }, { name: 'Status', value: 'status' }, { name: 'Set Action', value: 'setaction' },
-          { name: 'Set Log Channel', value: 'setlog' }, { name: 'Add Word', value: 'addword' },
-          { name: 'Remove Word', value: 'removeword' }, { name: 'List Words', value: 'listwords' }
-        ]
-      },
-      { name: 'value', type: 3, description: 'Value for setaction or word to add/remove', required: false },
-      { name: 'channel', type: 7, description: 'Channel for moderation logs', required: false, channel_types: [0] }
-    ]
-  },
   {
     name: 'warn',
     description: 'Warn a user for rule violation',
@@ -175,7 +158,7 @@ async function deployGuildCommands() {
     
     console.log('\n⚡ Admin Commands Available:');
     console.log('   ⚙️  Setup: /setup-automated');
-    console.log('   🛡️  Moderation: /automod, /warn, /clearwarnings, /clear, /slowmode');
+    console.log('   🛡️  Moderation: /warn, /clearwarnings, /clear, /slowmode');
     console.log('   📋 System: /setwelcome, /setgoodbye, /setup-verification, /rules, /config');
     
     console.log('\n💡 Usage Tips:');

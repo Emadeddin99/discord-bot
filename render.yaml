@@ -5,12 +5,12 @@ services:
     plan: free
     region: oregon
     
-    # SIMPLIFIED - just install, no deployment during build
+    # Build configuration
     buildCommand: npm install
     startCommand: npm start
     autoDeploy: true
     
-    # Environment variables (keep the rest the same)
+    # Environment variables
     envVars:
       - key: DISCORD_BOT_TOKEN
         sync: false
@@ -37,6 +37,7 @@ services:
     
     # Health check and monitoring
     healthCheckPath: /health
+    initialDelaySec: 60  # Give bot time to start
     
     # Security headers
     headers:

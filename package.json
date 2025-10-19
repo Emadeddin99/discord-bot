@@ -6,14 +6,13 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "deploy": "node deploy-commands.js",
     "deploy:global": "node deploy-commands.js",
     "deploy:guild": "node deploy-commands-guild.js",
     "deploy:all": "npm run deploy:global && npm run deploy:guild",
     "test": "echo \"No tests specified\" && exit 0",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "postinstall": "echo 'Dependencies installed successfully!'"
+    "postinstall": "echo '✅ Dependencies installed successfully!'"
   },
   "keywords": [
     "discord",
@@ -56,7 +55,6 @@
     "libsodium-wrappers": "^0.7.13",
     "opusscript": "^0.0.8",
     "quick.db": "^9.1.7",
-    "soundcloud-scraper": "^5.0.3",
     "ytdl-core": "^4.11.5"
   },
   "devDependencies": {
