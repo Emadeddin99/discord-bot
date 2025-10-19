@@ -9,6 +9,32 @@ console.log('CLIENT_ID:', process.env.CLIENT_ID ? '✅ Set' : '❌ NOT SET');
 // USER-FACING COMMANDS ONLY - Available in ALL servers
 // Updated to match all features except leveling
 const commands = [
+
+  {
+    name: 'automod',
+    description: 'Configure auto moderation (English & Arabic)',
+    options: [
+      {
+        name: 'action', type: 3, description: 'What automod should do', required: true,
+        choices: [
+          { name: 'Toggle', value: 'toggle' }, 
+          { name: 'Status', value: 'status' }, 
+          { name: 'Set Language', value: 'setlanguage' },
+          { name: 'Add Word', value: 'addword' },
+          { name: 'Remove Word', value: 'removeword' },
+          { name: 'List Words', value: 'listwords' },
+          { name: 'Settings', value: 'settings' }
+        ]
+      },
+      { name: 'value', type: 3, description: 'Value for the action', required: false },
+      { name: 'language', type: 3, description: 'Language for the word', required: false,
+        choices: [
+          { name: 'English', value: 'english' },
+          { name: 'Arabic', value: 'arabic' }
+        ]
+      }
+    ]
+  },
   // 🎪 General Commands
   {
     name: 'ping',
