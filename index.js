@@ -546,44 +546,6 @@ class AutoModSystem {
     return config.autoModSettings.enabled || false;
   }
 
-  static toggle(guildId) {
-    const config = getServerConfig(guildId);
-    config.autoModSettings.enabled = !config.autoModSettings.enabled;
-    saveConfig();
-    return config.autoModSettings.enabled;
-  }
-
-  static getBannedWords(guildId) {
-    if (!bannedWords.has(guildId)) {
-      bannedWords.set(guildId, {
-        english: [],
-        arabic: []
-      });
-    }
-    return bannedWords.get(guildId);
-  }
-
-  static addBannedWord(guildId, word, language = 'english') {
-    const words = this.getBannedWords(guildId);
-    if (!words[language].includes(word.toLowerCase())) {
-      words[language].push(word.toLowerCase());
-      saveConfig();
-      return true;
-    }
-    return false;
-  }
-
-  static removeBannedWord(guildId, word, language = 'english') {
-    const words = this.getBannedWords(guildId);
-    const index = words[language].indexOf(word.toLowerCase());
-    if (index > -1) {
-      words[language].splice(index, 1);
-      saveConfig();
-      return true;
-    }
-    return false;
-  }
-
   static async handleViolation(message, violationResult) {
     try {
       const config = getServerConfig(message.guild.id);
@@ -1246,7 +1208,7 @@ class VerificationSystem {
   }
 }
 
-// Command Definitions - All features with bilingual auto-mod
+// Command Definitions - Simplified without auto-mod configuration commands
 const commands = [
   // 🎪 General Commands
   {
@@ -1281,7 +1243,7 @@ const commands = [
         .addFields(
           { name: '🎪 General', value: '`/ping`, `/help`, `/server-info`, `/user-info`, `/avatar`, `/membercount`', inline: false },
           { name: '🎵 Music', value: '`/join`, `/leave`, `/play`, `/skip`, `/stop`, `/queue`, `/volume`, `/nowplaying`, `/shuffle`', inline: false },
-          { name: '🛡️ Moderation', value: '`/automod`, `/warn`, `/warnings`, `/clearwarnings`, `/clear`, `/slowmode`', inline: false },
+          { name: '🛡️ Moderation', value: '`/warn`, `/warnings`, `/clearwarnings`, `/clear`, `/slowmode`', inline: false },
           { name: '⚙️ Admin', value: '`/setup-automated`, `/setwelcome`, `/setgoodbye`, `/setup-verification`, `/rules`, `/config`', inline: false }
         )
         .setFooter({ text: 'Use slash commands (/) to interact with the bot!' });
@@ -1718,165 +1680,7 @@ const commands = [
     }
   },
 
-  // 🛡️ Moderation Commands with Bilingual Support
-  {
-    name: 'automod',
-    description: 'Configure auto moderation (English & Arabic)',
-    options: [
-      {
-        name: 'action', type: 3, description: 'What automod should do', required: true,
-        choices: [
-          { name: 'Toggle', value: 'toggle' }, 
-          { name: 'Status', value: 'status' }, 
-          { name: 'Set Language', value: 'setlanguage' },
-          { name: 'Add Word', value: 'addword' },
-          { name: 'Remove Word', value: 'removeword' },
-          { name: 'List Words', value: 'listwords' },
-          { name: 'Settings', value: 'settings' }
-        ]
-      },
-      { name: 'value', type: 3, description: 'Value for the action', required: false },
-      { name: 'language', type: 3, description: 'Language for the word', required: false,
-        choices: [
-          { name: 'English', value: 'english' },
-          { name: 'Arabic', value: 'arabic' }
-        ]
-      }
-    ],
-    async execute(interaction) {
-      if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-        return interaction.reply({ content: '❌ You need administrator permissions.', flags: 64 });
-      }
-
-      const action = interaction.options.getString('action');
-      const value = interaction.options.getString('value');
-      const language = interaction.options.getString('language') || 'english';
-
-      let embed;
-
-      switch (action) {
-        case 'toggle':
-          const newStatus = AutoModSystem.toggle(interaction.guild.id);
-          embed = new EmbedBuilder()
-            .setTitle('🛡️ Auto-Moderation')
-            .setColor(newStatus ? 0x00FF00 : 0xFF0000)
-            .setDescription(`Auto-moderation has been **${newStatus ? 'ENABLED' : 'DISABLED'}**`)
-            .addFields(
-              { name: 'Status', value: newStatus ? '✅ Enabled' : '❌ Disabled', inline: true },
-              { name: 'Language Support', value: '🇺🇸 English & 🇸🇦 Arabic', inline: true }
-            );
-          break;
-
-        case 'status':
-          const isEnabled = AutoModSystem.isEnabled(interaction.guild.id);
-          const words = AutoModSystem.getBannedWords(interaction.guild.id);
-          const config = getServerConfig(interaction.guild.id);
-          
-          embed = new EmbedBuilder()
-            .setTitle('🛡️ Auto-Moderation Status')
-            .setColor(isEnabled ? 0x00FF00 : 0xFF0000)
-            .addFields(
-              { name: 'Status', value: isEnabled ? '✅ Enabled' : '❌ Disabled', inline: true },
-              { name: 'English Words', value: `${words.english.length}`, inline: true },
-              { name: 'Arabic Words', value: `${words.arabic.length}`, inline: true },
-              { name: 'Check English', value: config.autoModSettings.checkEnglish ? '✅' : '❌', inline: true },
-              { name: 'Check Arabic', value: config.autoModSettings.checkArabic ? '✅' : '❌', inline: true },
-              { name: 'Max Warnings', value: `${config.autoModSettings.maxWarnings}`, inline: true }
-            );
-          break;
-
-        case 'setlanguage':
-          if (!value) {
-            return interaction.reply({ content: '❌ Please specify which language to toggle (english/arabic).', flags: 64 });
-          }
-          
-          const configLang = getServerConfig(interaction.guild.id);
-          if (value === 'english') {
-            configLang.autoModSettings.checkEnglish = !configLang.autoModSettings.checkEnglish;
-            embed = new EmbedBuilder()
-              .setTitle('🛡️ Auto-Moderation')
-              .setColor(configLang.autoModSettings.checkEnglish ? 0x00FF00 : 0xFF0000)
-              .setDescription(`English content checking **${configLang.autoModSettings.checkEnglish ? 'ENABLED' : 'DISABLED'}**`);
-          } else if (value === 'arabic') {
-            configLang.autoModSettings.checkArabic = !configLang.autoModSettings.checkArabic;
-            embed = new EmbedBuilder()
-              .setTitle('🛡️ Auto-Moderation')
-              .setColor(configLang.autoModSettings.checkArabic ? 0x00FF00 : 0xFF0000)
-              .setDescription(`Arabic content checking **${configLang.autoModSettings.checkArabic ? 'ENABLED' : 'DISABLED'}**`);
-          } else {
-            return interaction.reply({ content: '❌ Invalid language. Use "english" or "arabic".', flags: 64 });
-          }
-          await saveConfig();
-          break;
-
-        case 'addword':
-          if (!value) {
-            return interaction.reply({ content: '❌ Please provide a word to add.', flags: 64 });
-          }
-          const added = AutoModSystem.addBannedWord(interaction.guild.id, value, language);
-          embed = new EmbedBuilder()
-            .setTitle('🛡️ Auto-Moderation')
-            .setColor(added ? 0x00FF00 : 0xFF0000)
-            .setDescription(added ? 
-              `✅ Added "${value}" to ${language} banned words` : 
-              `❌ "${value}" is already in the ${language} list`
-            );
-          break;
-
-        case 'removeword':
-          if (!value) {
-            return interaction.reply({ content: '❌ Please provide a word to remove.', flags: 64 });
-          }
-          const removed = AutoModSystem.removeBannedWord(interaction.guild.id, value, language);
-          embed = new EmbedBuilder()
-            .setTitle('🛡️ Auto-Moderation')
-            .setColor(removed ? 0x00FF00 : 0xFF0000)
-            .setDescription(removed ? 
-              `✅ Removed "${value}" from ${language} banned words` : 
-              `❌ "${value}" not found in the ${language} list`
-            );
-          break;
-
-        case 'listwords':
-          const bannedWords = AutoModSystem.getBannedWords(interaction.guild.id);
-          const englishWords = bannedWords.english.slice(0, 20).join(', ') || 'No words';
-          const arabicWords = bannedWords.arabic.slice(0, 20).join(', ') || 'No words';
-          
-          embed = new EmbedBuilder()
-            .setTitle('🛡️ Banned Words List')
-            .setColor(0x3498DB)
-            .addFields(
-              { name: '🇺🇸 English Words', value: englishWords, inline: false },
-              { name: '🇸🇦 Arabic Words', value: arabicWords, inline: false },
-              { name: 'Total English', value: `${bannedWords.english.length}`, inline: true },
-              { name: 'Total Arabic', value: `${bannedWords.arabic.length}`, inline: true }
-            );
-          break;
-
-        case 'settings':
-          const settings = getServerConfig(interaction.guild.id).autoModSettings;
-          embed = new EmbedBuilder()
-            .setTitle('🛡️ Auto-Moderation Settings')
-            .setColor(0x3498DB)
-            .addFields(
-              { name: 'Enabled', value: settings.enabled ? '✅' : '❌', inline: true },
-              { name: 'Check English', value: settings.checkEnglish ? '✅' : '❌', inline: true },
-              { name: 'Check Arabic', value: settings.checkArabic ? '✅' : '❌', inline: true },
-              { name: 'Delete Messages', value: settings.deleteMessages ? '✅' : '❌', inline: true },
-              { name: 'Warn Users', value: settings.warnUsers ? '✅' : '❌', inline: true },
-              { name: 'Log Actions', value: settings.logActions ? '✅' : '❌', inline: true },
-              { name: 'Max Warnings', value: `${settings.maxWarnings}`, inline: true },
-              { name: 'Mute Duration', value: `${settings.muteDuration} minutes`, inline: true }
-            );
-          break;
-
-        default:
-          return interaction.reply({ content: '❌ Invalid action.', flags: 64 });
-      }
-
-      await interaction.reply({ embeds: [embed] });
-    }
-  },
+  // 🛡️ Moderation Commands (Simplified - no auto-mod configuration)
   {
     name: 'warn',
     description: 'Warn a user for rule violation',
@@ -2085,11 +1889,7 @@ const commands = [
         setupResults.push('✅ Log channel set');
       }
 
-      // Enable auto-mod with bilingual support
-      config.autoModSettings.enabled = true;
-      config.autoModSettings.checkEnglish = true;
-      config.autoModSettings.checkArabic = true;
-      setupResults.push('✅ Auto-moderation enabled (English & Arabic)');
+      // Auto-mod is already enabled by default, no need to set it up
 
       await saveConfig();
 
@@ -2100,7 +1900,7 @@ const commands = [
         .addFields(
           { name: 'Setup Results', value: setupResults.join('\n') || 'No features configured', inline: false }
         )
-        .setFooter({ text: 'Use /config to view current settings' })
+        .setFooter({ text: 'Auto-moderation is enabled by default with bilingual support' })
         .setTimestamp();
 
       await interaction.editReply({ embeds: [embed] });
@@ -2312,7 +2112,6 @@ const commands = [
 
       const config = getServerConfig(interaction.guild.id);
       const autoModSettings = config.autoModSettings;
-      const bannedWordsList = AutoModSystem.getBannedWords(interaction.guild.id);
       const rulesCount = RulesSystem.getRules(interaction.guild.id).length;
 
       const embed = new EmbedBuilder()
@@ -2328,11 +2127,9 @@ const commands = [
           { name: 'Auto-Mod Status', value: autoModSettings.enabled ? '✅ Enabled' : '❌ Disabled', inline: true },
           { name: 'Check English', value: autoModSettings.checkEnglish ? '✅' : '❌', inline: true },
           { name: 'Check Arabic', value: autoModSettings.checkArabic ? '✅' : '❌', inline: true },
-          { name: 'English Words', value: `${bannedWordsList.english.length}`, inline: true },
-          { name: 'Arabic Words', value: `${bannedWordsList.arabic.length}`, inline: true },
           { name: 'Server Rules', value: `${rulesCount}`, inline: true }
         )
-        .setFooter({ text: 'Use /setup-automated to configure multiple features' })
+        .setFooter({ text: 'Auto-moderation is enabled by default with bilingual support' })
         .setTimestamp();
 
       await interaction.reply({ embeds: [embed] });
