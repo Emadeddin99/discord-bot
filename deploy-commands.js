@@ -48,6 +48,56 @@ const commands = [
     description: 'Show the current member count'
   },
   {
+    name: 'join',
+    description: 'Join your voice channel'
+  },
+  {
+    name: 'leave',
+    description: 'Leave the voice channel'
+  },
+  {
+    name: 'play',
+    description: 'Play music from a YouTube URL',
+    options: [
+      {
+        name: 'url',
+        type: 3,
+        description: 'YouTube URL to play',
+        required: true
+      }
+    ]
+  },
+  {
+    name: 'skip',
+    description: 'Skip the current song'
+  },
+  {
+    name: 'stop',
+    description: 'Stop the music and clear the queue'
+  },
+  {
+    name: 'queue',
+    description: 'Show the current music queue'
+  },
+  {
+    name: 'volume',
+    description: 'Set the music volume',
+    options: [
+      {
+        name: 'volume',
+        type: 4,
+        description: 'Volume level (1-100)',
+        required: true,
+        min_value: 1,
+        max_value: 100
+      }
+    ]
+  },
+  {
+    name: 'nowplaying',
+    description: 'Show the currently playing song'
+  },
+  {
     name: 'setwelcome',
     description: 'Set the welcome channel for this server',
     options: [
@@ -88,32 +138,6 @@ const commands = [
   {
     name: 'config',
     description: 'View the current bot configuration'
-  },
-  {
-    name: 'spotify',
-    description: 'Spotify music bot controls',
-    options: [
-      {
-        name: 'action',
-        type: 3,
-        description: 'Action to perform',
-        required: true,
-        choices: [
-          { name: 'Join', value: 'join' },
-          { name: 'Leave', value: 'leave' },
-          { name: 'Auto-Join', value: 'autojoin' },
-          { name: 'Set Channel', value: 'setchannel' },
-          { name: 'Status', value: 'status' }
-        ]
-      },
-      {
-        name: 'channel',
-        type: 7,
-        description: 'Voice channel for Spotify bot',
-        required: false,
-        channel_types: [2]
-      }
-    ]
   },
   {
     name: 'clear',
@@ -376,48 +400,6 @@ const commands = [
         required: false
       }
     ]
-  },
-  {
-    name: 'play',
-    description: 'Play music from a YouTube URL',
-    options: [
-      {
-        name: 'url',
-        type: 3,
-        description: 'YouTube URL to play',
-        required: true
-      }
-    ]
-  },
-  {
-    name: 'skip',
-    description: 'Skip the current song'
-  },
-  {
-    name: 'stop',
-    description: 'Stop the music and clear the queue'
-  },
-  {
-    name: 'queue',
-    description: 'Show the current music queue'
-  },
-  {
-    name: 'volume',
-    description: 'Set the music volume',
-    options: [
-      {
-        name: 'volume',
-        type: 4,
-        description: 'Volume level (1-100)',
-        required: true,
-        min_value: 1,
-        max_value: 100
-      }
-    ]
-  },
-  {
-    name: 'nowplaying',
-    description: 'Show the currently playing song'
   }
 ];
 
@@ -448,20 +430,48 @@ async function deployCommands() {
     );
 
     console.log(`✅ Successfully reloaded ${data.length} application (/) commands.`);
-    console.log('📝 Commands deployed:');
-    data.forEach(cmd => {
-      console.log(`   - /${cmd.name}: ${cmd.description}`);
-    });
     
-    console.log('\n🎉 Your bot commands are now live!');
-    console.log('⏰ It may take up to 1 hour to appear in all servers.');
-    console.log('🔧 New features available:');
-    console.log('   - 🎵 Enhanced Music System (play, skip, stop, queue, volume, nowplaying)');
-    console.log('   - 📊 Complete Leveling System (level, leaderboard, leveling-setup)');
-    console.log('   - ⚡ One-Click Setup (setup-automated)');
-    console.log('   - 🛡️ Enhanced Moderation (warn, warnings, clearwarnings)');
-    console.log('   - 👋 Welcome/Goodbye System');
-    console.log('   - ⚙️ Auto-Moderation Configuration');
+    console.log('\n🎵 Music Commands:');
+    console.log('   - /join - Join your voice channel');
+    console.log('   - /leave - Leave the voice channel');
+    console.log('   - /play - Play music from YouTube');
+    console.log('   - /skip - Skip current song');
+    console.log('   - /stop - Stop music and clear queue');
+    console.log('   - /queue - Show music queue');
+    console.log('   - /volume - Set music volume');
+    console.log('   - /nowplaying - Show current song');
+    
+    console.log('\n📊 Leveling Commands:');
+    console.log('   - /level - Check your level');
+    console.log('   - /leaderboard - Server leaderboard');
+    console.log('   - /leveling-setup - Configure leveling');
+    
+    console.log('\n🛡️ Moderation Commands:');
+    console.log('   - /warn - Warn a user');
+    console.log('   - /warnings - Check warnings');
+    console.log('   - /clearwarnings - Clear warnings');
+    console.log('   - /automod - Auto-moderation settings');
+    console.log('   - /clear - Clear messages');
+    console.log('   - /slowmode - Set slowmode');
+    
+    console.log('\n⚙️ Admin Commands:');
+    console.log('   - /setup-automated - One-click setup');
+    console.log('   - /setwelcome - Set welcome channel');
+    console.log('   - /setgoodbye - Set goodbye channel');
+    console.log('   - /config - View configuration');
+    console.log('   - /rules - Manage server rules');
+    console.log('   - /setup-verification - Verification system');
+    
+    console.log('\n🎪 General Commands:');
+    console.log('   - /ping - Check bot latency');
+    console.log('   - /help - Show all commands');
+    console.log('   - /server-info - Server information');
+    console.log('   - /user-info - User information');
+    console.log('   - /avatar - Get user avatar');
+    console.log('   - /membercount - Member count');
+    
+    console.log('\n🎉 Your bot commands are now live in all servers!');
+    console.log('⏰ It may take up to 1 hour to appear everywhere.');
     
   } catch (error) {
     console.error('❌ Error deploying commands:', error.message);
@@ -472,6 +482,9 @@ async function deployCommands() {
       console.log('💡 Missing Permissions: Check your bot has the necessary permissions');
     } else if (error.code === 40060) {
       console.log('💡 Too many application commands: You have reached the limit of 100 commands');
+      console.log('💡 Try removing some unused commands');
+    } else if (error.code === 50035) {
+      console.log('�️ Invalid Form Body: Check your command options for errors');
     }
     
     process.exit(1);
