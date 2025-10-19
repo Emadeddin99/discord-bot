@@ -150,35 +150,80 @@ function getServerConfig(guildId) {
   return serverConfigs[guildId];
 }
 
-// Bilingual Text Monitoring System
+// Enhanced Bilingual Text Monitoring System with Typo Detection
 class BilingualAutoMod {
-  // English banned words and patterns
+  // Comprehensive English banned words with common variations
   static englishBannedWords = [
-    // Profanity
+    // Profanity - Base words
     'fuck', 'shit', 'bitch', 'asshole', 'dick', 'pussy', 'cunt', 'whore', 'slut',
-    'bastard', 'motherfucker', 'bullshit', 'damn', 'hell',
-    // Racial slurs
-    'nigger', 'nigga', 'chink', 'spic', 'kike', 'wetback',
+    'bastard', 'motherfucker', 'bullshit', 'damn', 'hell', 'cock', 'dickhead',
+    'fag', 'faggot', 'retard', 'nigger', 'nigga', 'chink', 'spic', 'kike', 'wetback',
+    'cocksucker', 'douchebag', 'douche', 'scumbag', 'shithead', 'dipshit', 'shitface',
+    'asswipe', 'asshat', 'arsehole', 'wanker', 'twat', 'bellend', 'prick', 'dildo',
+    
     // Hate speech
-    'kill all', 'death to', 'exterminate', 'genocide',
+    'kill all', 'death to', 'exterminate', 'genocide', 'gas the', 'holocaust',
+    'white power', 'black power', 'hitler', 'nazi', 'kkk', 'racist', 'sexist',
+    'homophobic', 'transphobic', 'islamophobic', 'anti semitic', 'anti-semitic',
+    
     // Threats
-    'i will kill', 'i will murder', 'i will hurt', 'i will beat',
+    'i will kill', 'i will murder', 'i will hurt', 'i will beat', 'i will shoot',
+    'kill you', 'murder you', 'hurt you', 'beat you', 'shoot you', 'stab you',
+    'attack you', 'fight you', 'destroy you', 'eliminate you',
+    
     // Self-harm
-    'i want to die', 'i will kill myself', 'suicide', 'cut myself'
+    'i want to die', 'i will kill myself', 'suicide', 'cut myself', 'end my life',
+    'want to die', 'kill myself', 'commit suicide', 'end it all', 'self harm',
+    'cutting', 'self injury', 'suicidal', 'overdose'
   ];
 
-  // Arabic banned words and patterns (transliterated)
+  // Comprehensive Arabic banned words with variations (transliterated)
   static arabicBannedWords = [
     // Profanity
     'kos', 'kos omak', 'sharmouta', 'ahbal', 'ibn el sharmouta', 'kes ekhtak',
     'ya ibn el', 'ya bet el', 'ya kalb', 'ya harami', 'ya wad', 'ya 3ars',
+    'kosok', 'kosk', 'sharmoot', 'sharmoota', '7aram', '7arami', '3ars', '3ar',
+    'ibn el kalb', 'bent el kalb', 'omak', 'abook', 'ahbal', 'ghabi', 'mahbol',
+    'majnoon', 'magnoon', 'hayawan', '7mar', 'kelb', '2alb',
+    
     // Religious insults
-    'ya ibn el kalb', 'ya ibn el sharmouta', 'allah yakhodak', 'ya kafir',
+    'ya ibn el kalb', 'allah yakhodak', 'ya kafir', 'ya murtad', 'rasool el shaytan',
+    'nabi el shaytan', 'religion el shaytan', 'deenak', 'allah', 'islam', 'muslim',
+    'christian', 'yehudi', 'bouddha',
+    
     // Threats
-    'hatktlk', 'hamotak', 'ha2tlak', 'harag', 'haragek', 'moot', 'mawt',
+    'hatktlk', 'hamotak', 'ha2tlak', 'harag', 'haragek', 'moot', 'mawt', 'a2telak',
+    'a2telk', 'hatk', 'hamot', 'harag', '7arag', '7aragek', 'darb', 'darab',
+    'sa7ab', 'se7ab', 'ye7keek', 'ye7kiik',
+    
     // Sexual content
-    'ayre', 'manyak', 'mnayek', 'nerd', 'nrd', 'nrdy'
+    'ayre', 'manyak', 'mnayek', 'nerd', 'nrd', 'nrdy', 'manyake', 'manyak',
+    'mounik', 'nik', 'nyk', 'sexy', 'sex', 'make love', 'sleep with',
+    'sexual', 'intercourse', 'porn', 'porno'
   ];
+
+  // Common character substitutions for typo detection
+  static characterSubstitutions = {
+    'a': ['4', '@', 'á', 'à', 'â', 'ä'],
+    'b': ['8', '6', '13'],
+    'c': ['(', '[', '<', '©'],
+    'e': ['3', '&', 'é', 'è', 'ê', 'ë'],
+    'g': ['9', '6'],
+    'i': ['1', '!', '|', 'í', 'ì', 'î', 'ï'],
+    'l': ['1', '|', '7'],
+    'o': ['0', '()', 'ó', 'ò', 'ô', 'ö'],
+    's': ['5', '$', 'z'],
+    't': ['7', '+'],
+    'z': ['2', 's'],
+    '0': ['o'],
+    '1': ['i', 'l'],
+    '3': ['e'],
+    '4': ['a'],
+    '5': ['s'],
+    '7': ['t', 'l'],
+    '8': ['b'],
+    '9': ['g']
+  };
 
   // Arabic character ranges for detection
   static arabicRanges = [
@@ -188,6 +233,59 @@ class BilingualAutoMod {
     [0xFB50, 0xFDFF], // Arabic Presentation Forms-A
     [0xFE70, 0xFEFF]  // Arabic Presentation Forms-B
   ];
+
+  // Normalize text for better detection (handles leetspeak and common substitutions)
+  static normalizeText(text) {
+    let normalized = text.toLowerCase();
+    
+    // Replace common character substitutions
+    Object.keys(this.characterSubstitutions).forEach(normalChar => {
+      this.characterSubstitutions[normalChar].forEach(subChar => {
+        const regex = new RegExp(subChar, 'gi');
+        normalized = normalized.replace(regex, normalChar);
+      });
+    });
+    
+    // Remove repeated characters (e.g., "fuuuck" -> "fuck")
+    normalized = normalized.replace(/(.)\1{2,}/g, '$1$1');
+    
+    // Remove extra spaces and special characters
+    normalized = normalized.replace(/[^\w\s]/g, '');
+    normalized = normalized.replace(/\s+/g, ' ');
+    
+    return normalized.trim();
+  }
+
+  // Generate typo variations for a word
+  static generateTypoVariations(word) {
+    const variations = new Set([word]);
+    
+    // Common typo patterns
+    const typoPatterns = [
+      // Double letters
+      (w) => w.replace(/([a-z])\1/g, '$1'),
+      // Missing vowels
+      (w) => w.replace(/[aeiou]/g, ''),
+      // Character swaps
+      (w) => {
+        if (w.length > 1) {
+          const chars = w.split('');
+          for (let i = 0; i < chars.length - 1; i++) {
+            const swapped = [...chars];
+            [swapped[i], swapped[i + 1]] = [swapped[i + 1], swapped[i]];
+            variations.add(swapped.join(''));
+          }
+        }
+        return w;
+      }
+    ];
+    
+    typoPatterns.forEach(pattern => {
+      variations.add(pattern(word));
+    });
+    
+    return Array.from(variations);
+  }
 
   // Check if text contains Arabic characters
   static containsArabic(text) {
@@ -202,26 +300,60 @@ class BilingualAutoMod {
     return false;
   }
 
-  // Check for banned content in both languages
+  // Check for banned content in both languages with typo detection
   static checkMessage(content, guildId) {
     const config = getServerConfig(guildId);
     if (!config.autoModSettings.enabled) return null;
 
     const lowerContent = content.toLowerCase();
+    const normalizedContent = this.normalizeText(content);
+    
     const results = {
       violations: [],
       language: 'none',
-      severity: 'low'
+      severity: 'low',
+      originalWord: '',
+      detectedVariation: ''
     };
 
     // Check English content if enabled
     if (config.autoModSettings.checkEnglish) {
-      for (const word of this.englishBannedWords) {
-        if (lowerContent.includes(word)) {
+      for (const baseWord of this.englishBannedWords) {
+        // Check exact match
+        if (lowerContent.includes(baseWord) || normalizedContent.includes(baseWord)) {
           results.violations.push({
-            word: word,
+            word: baseWord,
             language: 'english',
-            type: this.getViolationType(word)
+            type: this.getViolationType(baseWord),
+            variation: 'exact'
+          });
+          continue;
+        }
+
+        // Check with typo variations
+        const variations = this.generateTypoVariations(baseWord);
+        for (const variation of variations) {
+          if (variation !== baseWord && 
+              (lowerContent.includes(variation) || normalizedContent.includes(variation))) {
+            results.violations.push({
+              word: baseWord,
+              language: 'english',
+              type: this.getViolationType(baseWord),
+              variation: variation,
+              isTypo: true
+            });
+            break;
+          }
+        }
+
+        // Check with character substitutions (leetspeak)
+        if (this.checkLeetspeak(lowerContent, baseWord)) {
+          results.violations.push({
+            word: baseWord,
+            language: 'english',
+            type: this.getViolationType(baseWord),
+            variation: 'leetspeak',
+            isTypo: true
           });
         }
       }
@@ -232,23 +364,41 @@ class BilingualAutoMod {
       // Check for Arabic characters
       if (this.containsArabic(content)) {
         // Check transliterated Arabic banned words
-        for (const word of this.arabicBannedWords) {
-          if (lowerContent.includes(word)) {
+        for (const baseWord of this.arabicBannedWords) {
+          if (lowerContent.includes(baseWord) || normalizedContent.includes(baseWord)) {
             results.violations.push({
-              word: word,
+              word: baseWord,
               language: 'arabic',
-              type: this.getViolationType(word)
+              type: this.getViolationType(baseWord),
+              variation: 'exact'
             });
+            continue;
+          }
+
+          // Check Arabic variations
+          const variations = this.generateTypoVariations(baseWord);
+          for (const variation of variations) {
+            if (variation !== baseWord && 
+                (lowerContent.includes(variation) || normalizedContent.includes(variation))) {
+              results.violations.push({
+                word: baseWord,
+                language: 'arabic',
+                type: this.getViolationType(baseWord),
+                variation: variation,
+                isTypo: true
+              });
+              break;
+            }
           }
         }
 
         // Additional Arabic content checks
-        const arabicContent = content;
-        if (this.checkArabicSeverity(arabicContent)) {
+        if (this.checkArabicSeverity(content)) {
           results.violations.push({
             word: 'arabic_content',
             language: 'arabic',
-            type: 'inappropriate'
+            type: 'inappropriate',
+            variation: 'pattern'
           });
         }
       }
@@ -258,21 +408,81 @@ class BilingualAutoMod {
     if (results.violations.length > 0) {
       results.severity = this.determineSeverity(results.violations);
       results.language = results.violations[0].language;
+      
+      // Store detection details
+      const firstViolation = results.violations[0];
+      results.originalWord = firstViolation.word;
+      results.detectedVariation = firstViolation.variation;
+      
       return results;
     }
 
     return null;
   }
 
+  // Check for leetspeak variations
+  static checkLeetspeak(content, word) {
+    const leetPatterns = this.generateLeetPatterns(word);
+    return leetPatterns.some(pattern => {
+      const regex = new RegExp(pattern, 'i');
+      return regex.test(content);
+    });
+  }
+
+  // Generate leetspeak patterns for a word
+  static generateLeetPatterns(word) {
+    const patterns = [];
+    const chars = word.split('');
+    
+    // Generate pattern with common substitutions
+    let pattern = '';
+    chars.forEach(char => {
+      if (this.characterSubstitutions[char]) {
+        pattern += `[${char}${this.characterSubstitutions[char].join('')}]`;
+      } else {
+        pattern += char;
+      }
+    });
+    patterns.push(pattern);
+    
+    // Additional common leetspeak patterns
+    if (word.includes('a')) patterns.push(word.replace(/a/gi, '[a4@]'));
+    if (word.includes('e')) patterns.push(word.replace(/e/gi, '[e3]'));
+    if (word.includes('i')) patterns.push(word.replace(/i/gi, '[i1!]'));
+    if (word.includes('o')) patterns.push(word.replace(/o/gi, '[o0]'));
+    if (word.includes('s')) patterns.push(word.replace(/s/gi, '[s5$]'));
+    if (word.includes('t')) patterns.push(word.replace(/t/gi, '[t7]'));
+    
+    return patterns;
+  }
+
   // Determine violation type
   static getViolationType(word) {
-    const profanity = ['fuck', 'shit', 'bitch', 'kos', 'sharmouta', 'ahbal'];
-    const hateSpeech = ['nigger', 'kill all', 'death to', 'kafir', 'harami'];
-    const threats = ['kill', 'murder', 'hurt', 'beat', 'hamotak', 'ha2tlak'];
+    const profanity = [
+      'fuck', 'shit', 'bitch', 'asshole', 'dick', 'pussy', 'cunt', 'whore', 'slut',
+      'bastard', 'motherfucker', 'bullshit', 'damn', 'hell', 'cock', 'dickhead',
+      'kos', 'sharmouta', 'ahbal', 'kes', '3ars', 'ayre', 'manyak'
+    ];
+    
+    const hateSpeech = [
+      'nigger', 'nigga', 'chink', 'spic', 'kike', 'wetback', 'fag', 'faggot', 'retard',
+      'kill all', 'death to', 'exterminate', 'genocide', 'gas the', 'holocaust',
+      'kafir', 'murtad'
+    ];
+    
+    const threats = [
+      'kill', 'murder', 'hurt', 'beat', 'shoot', 'hamotak', 'ha2tlak', 'harag',
+      'moot', 'mawt', 'a2telak'
+    ];
 
-    if (profanity.some(p => word.includes(p))) return 'profanity';
+    const selfHarm = [
+      'suicide', 'kill myself', 'cut myself', 'end my life', 'want to die'
+    ];
+
     if (hateSpeech.some(h => word.includes(h))) return 'hate_speech';
     if (threats.some(t => word.includes(t))) return 'threat';
+    if (selfHarm.some(s => word.includes(s))) return 'self_harm';
+    if (profanity.some(p => word.includes(p))) return 'profanity';
     return 'inappropriate';
   }
 
@@ -280,7 +490,8 @@ class BilingualAutoMod {
   static checkArabicSeverity(content) {
     const severePatterns = [
       /كسمك/gi, /كس امك/gi, /شرموطة/gi, /احا/gi, /ابن/gi, /كلب/gi,
-      /حرامي/gi, /هاتك/gi, /هاجر/gi, /نيك/gi, /انيج/gi
+      /حرامي/gi, /هاتك/gi, /هاجر/gi, /نيك/gi, /انيج/gi, /قحبة/gi,
+      /عاهر/gi, /زانية/gi, /دعارة/gi
     ];
 
     return severePatterns.some(pattern => pattern.test(content));
@@ -290,8 +501,9 @@ class BilingualAutoMod {
   static determineSeverity(violations) {
     const hasHateSpeech = violations.some(v => v.type === 'hate_speech');
     const hasThreats = violations.some(v => v.type === 'threat');
+    const hasSelfHarm = violations.some(v => v.type === 'self_harm');
     
-    if (hasHateSpeech || hasThreats) return 'high';
+    if (hasHateSpeech || hasThreats || hasSelfHarm) return 'high';
     if (violations.some(v => v.type === 'profanity')) return 'medium';
     return 'low';
   }
@@ -303,90 +515,261 @@ class BilingualAutoMod {
     if (language === 'arabic') {
       if (types.includes('hate_speech')) return 'كلام كراهية';
       if (types.includes('threat')) return 'تهديدات';
+      if (types.includes('self_harm')) return 'إيذاء النفس';
       if (types.includes('profanity')) return 'الفاظ نابية';
       return 'محتوى غير لائق';
     } else {
       if (types.includes('hate_speech')) return 'Hate speech';
       if (types.includes('threat')) return 'Threats';
+      if (types.includes('self_harm')) return 'Self-harm content';
       if (types.includes('profanity')) return 'Profanity';
       return 'Inappropriate content';
     }
   }
+
+  // Get typo detection message
+  static getTypoDetectionMessage(violation, language) {
+    if (!violation.isTypo) return '';
+    
+    if (language === 'arabic') {
+      return ` (تم الكشف عن تغيير في الكتابة: ${violation.variation})`;
+    } else {
+      return ` (detected variation: ${violation.variation})`;
+    }
+  }
 }
 
-// Improved YouTube URL validation function
-function validateYouTubeUrl(url) {
-  // Remove any extra parameters that might cause issues
-  let cleanUrl = url.split('&')[0]; // Remove everything after &
-  cleanUrl = cleanUrl.split('?')[0]; // Remove everything after ?
-  
-  // Basic YouTube URL patterns - more comprehensive
-  const patterns = [
-    // Standard watch URLs
-    /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
-    /^(https?:\/\/)?(m\.)?(youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
-    
-    // Short URLs
-    /^(https?:\/\/)?(www\.)?(youtu\.be\/)([a-zA-Z0-9_-]{11})/,
-    /^(https?:\/\/)?(youtu\.be\/)([a-zA-Z0-9_-]{11})/,
-    
-    // Embed URLs
-    /^(https?:\/\/)?(www\.)?(youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
-    /^(https?:\/\/)?(m\.)?(youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
-    
-    // Mobile URLs
-    /^(https?:\/\/)?(m\.)?(youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
-    
-    // Newer YouTube URLs
-    /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?.*v=)([a-zA-Z0-9_-]{11})/,
-    /^(https?:\/\/)?(music\.)?(youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
-    
-    // With additional parameters
-    /youtube\.com\/watch\?.*v=([a-zA-Z0-9_-]{11})/,
-    /youtu\.be\/([a-zA-Z0-9_-]{11})/
-  ];
-
-  // First try ytdl's built-in validation
-  if (ytdl.validateURL(cleanUrl)) {
-    return {
-      isValid: true,
-      videoId: extractVideoId(cleanUrl),
-      normalizedUrl: cleanUrl
-    };
+// Enhanced Auto-Moderation System with Bilingual Support
+class AutoModSystem {
+  static isEnabled(guildId) {
+    const config = getServerConfig(guildId);
+    return config.autoModSettings.enabled || false;
   }
 
-  // Then try our pattern matching
-  for (const pattern of patterns) {
-    const match = cleanUrl.match(pattern);
-    if (match) {
-      const videoId = match[4] || match[2] || extractVideoId(cleanUrl);
-      if (videoId && videoId.length === 11) {
+  static toggle(guildId) {
+    const config = getServerConfig(guildId);
+    config.autoModSettings.enabled = !config.autoModSettings.enabled;
+    saveConfig();
+    return config.autoModSettings.enabled;
+  }
+
+  static getBannedWords(guildId) {
+    if (!bannedWords.has(guildId)) {
+      bannedWords.set(guildId, {
+        english: [],
+        arabic: []
+      });
+    }
+    return bannedWords.get(guildId);
+  }
+
+  static addBannedWord(guildId, word, language = 'english') {
+    const words = this.getBannedWords(guildId);
+    if (!words[language].includes(word.toLowerCase())) {
+      words[language].push(word.toLowerCase());
+      saveConfig();
+      return true;
+    }
+    return false;
+  }
+
+  static removeBannedWord(guildId, word, language = 'english') {
+    const words = this.getBannedWords(guildId);
+    const index = words[language].indexOf(word.toLowerCase());
+    if (index > -1) {
+      words[language].splice(index, 1);
+      saveConfig();
+      return true;
+    }
+    return false;
+  }
+
+  static async handleViolation(message, violationResult) {
+    try {
+      const config = getServerConfig(message.guild.id);
+      
+      // Delete the message if enabled
+      if (config.autoModSettings.deleteMessages) {
+        await message.delete();
+      }
+
+      // Add warning to user if enabled
+      if (config.autoModSettings.warnUsers) {
+        this.addWarning(message.guild.id, message.author.id, 
+          `Auto-mod violation: ${BilingualAutoMod.getViolationDescription(violationResult.violations, 'english')}`
+        );
+
+        // Send warning DM in appropriate language
+        await this.sendWarningDM(message, violationResult);
+      }
+
+      // Log the action if enabled
+      if (config.autoModSettings.logActions && config.logChannel) {
+        await this.logViolation(message, violationResult);
+      }
+
+      console.log(`🛡️ Auto-mod action for ${message.author.tag}: ${violationResult.severity} severity`);
+
+    } catch (error) {
+      console.error('Error handling auto-mod violation:', error);
+    }
+  }
+
+  static async sendWarningDM(message, violationResult) {
+    try {
+      const violationDesc = BilingualAutoMod.getViolationDescription(violationResult.violations, 'english');
+      const arabicDesc = BilingualAutoMod.getViolationDescription(violationResult.violations, 'arabic');
+      
+      const typoMessage = BilingualAutoMod.getTypoDetectionMessage(violationResult.violations[0], 'english');
+      const arabicTypoMessage = BilingualAutoMod.getTypoDetectionMessage(violationResult.violations[0], 'arabic');
+      
+      const warningDM = new EmbedBuilder()
+        .setTitle('⚠️ Auto-Moderation Warning')
+        .setColor(0xFFA500)
+        .setDescription(`Your message in **${message.guild.name}** was flagged by our moderation system.`)
+        .addFields(
+          { name: 'Violation', value: violationDesc + typoMessage, inline: true },
+          { name: 'Severity', value: violationResult.severity.toUpperCase(), inline: true },
+          { name: 'Language', value: violationResult.language.toUpperCase(), inline: true },
+          { name: 'Message Preview', value: message.content.slice(0, 100) + '...', inline: false }
+        )
+        .setFooter({ text: 'Repeated violations may result in mutes or bans' })
+        .setTimestamp();
+
+      // Add Arabic description if relevant
+      if (violationResult.language === 'arabic') {
+        warningDM.addFields({
+          name: 'المخالفة',
+          value: arabicDesc + arabicTypoMessage,
+          inline: false
+        });
+      }
+
+      await message.author.send({ embeds: [warningDM] });
+    } catch (dmError) {
+      console.log(`Could not send DM to ${message.author.tag}`);
+    }
+  }
+
+  static addWarning(guildId, userId, reason) {
+    if (!userWarnings.has(guildId)) {
+      userWarnings.set(guildId, {});
+    }
+    const guildWarnings = userWarnings.get(guildId);
+    
+    if (!guildWarnings[userId]) {
+      guildWarnings[userId] = [];
+    }
+    
+    guildWarnings[userId].push({
+      reason: reason,
+      timestamp: Date.now()
+    });
+    
+    saveConfig();
+    return guildWarnings[userId].length;
+  }
+
+  static getWarnings(guildId, userId) {
+    if (!userWarnings.has(guildId)) return [];
+    const guildWarnings = userWarnings.get(guildId);
+    return guildWarnings[userId] || [];
+  }
+
+  static clearWarnings(guildId, userId) {
+    if (userWarnings.has(guildId)) {
+      const guildWarnings = userWarnings.get(guildId);
+      if (guildWarnings[userId]) {
+        delete guildWarnings[userId];
+        saveConfig();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static async logViolation(message, violationResult) {
+    try {
+      const config = getServerConfig(message.guild.id);
+      const logChannel = message.guild.channels.cache.get(config.logChannel);
+      
+      if (logChannel) {
+        const logEmbed = new EmbedBuilder()
+          .setTitle('🛡️ Auto-Moderation Action')
+          .setColor(0xFF0000)
+          .setDescription(`Message from ${message.author} was flagged`)
+          .addFields(
+            { name: 'User', value: `${message.author.tag} (${message.author.id})`, inline: true },
+            { name: 'Channel', value: `${message.channel}`, inline: true },
+            { name: 'Violation', value: BilingualAutoMod.getViolationDescription(violationResult.violations, 'english'), inline: true },
+            { name: 'Severity', value: violationResult.severity.toUpperCase(), inline: true },
+            { name: 'Language', value: violationResult.language.toUpperCase(), inline: true },
+            { name: 'Message Content', value: message.content.slice(0, 1024), inline: false }
+          )
+          .setTimestamp()
+          .setFooter({ text: 'Auto-Moderation System' });
+
+        await logChannel.send({ embeds: [logEmbed] });
+      }
+    } catch (error) {
+      console.error('Error logging violation:', error);
+    }
+  }
+}
+
+// SIMPLIFIED YouTube URL validation - Much more reliable
+function validateYouTubeUrl(url) {
+  try {
+    // First, try ytdl's built-in validation (most reliable)
+    if (ytdl.validateURL(url)) {
+      return {
+        isValid: true,
+        videoId: extractVideoIdSimple(url),
+        normalizedUrl: url
+      };
+    }
+
+    // If that fails, try to extract video ID from common patterns
+    const videoId = extractVideoIdSimple(url);
+    if (videoId && videoId.length === 11) {
+      const normalizedUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      // Test if this normalized URL works with ytdl
+      if (ytdl.validateURL(normalizedUrl)) {
         return {
           isValid: true,
           videoId: videoId,
-          normalizedUrl: `https://www.youtube.com/watch?v=${videoId}`
+          normalizedUrl: normalizedUrl
         };
       }
     }
-  }
 
-  return { isValid: false };
+    return { isValid: false };
+  } catch (error) {
+    console.error('URL validation error:', error);
+    return { isValid: false };
+  }
 }
 
-// Helper function to extract video ID from various URL formats
-function extractVideoId(url) {
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?\/]+)/,
-    /youtube\.com\/watch\?.*v=([^&?\/]+)/,
-    /youtu\.be\/([^&?\/]+)/
-  ];
-  
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match && match[1]) {
-      return match[1];
-    }
+// Simple video ID extraction
+function extractVideoIdSimple(url) {
+  // Handle youtu.be short URLs
+  if (url.includes('youtu.be/')) {
+    const match = url.match(/youtu\.be\/([^&?\/]+)/);
+    return match ? match[1] : null;
   }
+  
+  // Handle youtube.com URLs
+  if (url.includes('youtube.com')) {
+    const match = url.match(/[?&]v=([^&?\/]+)/);
+    return match ? match[1] : null;
+  }
+  
+  // Handle youtube.com/embed/ URLs
+  if (url.includes('youtube.com/embed/')) {
+    const match = url.match(/youtube\.com\/embed\/([^&?\/]+)/);
+    return match ? match[1] : null;
+  }
+  
   return null;
 }
 
@@ -700,199 +1083,6 @@ function leaveVoice(guildId) {
   return false;
 }
 
-// Enhanced Auto-Moderation System with Bilingual Support
-class AutoModSystem {
-  static isEnabled(guildId) {
-    const config = getServerConfig(guildId);
-    return config.autoModSettings.enabled || false;
-  }
-
-  static toggle(guildId) {
-    const config = getServerConfig(guildId);
-    config.autoModSettings.enabled = !config.autoModSettings.enabled;
-    saveConfig();
-    return config.autoModSettings.enabled;
-  }
-
-  static getBannedWords(guildId) {
-    if (!bannedWords.has(guildId)) {
-      bannedWords.set(guildId, {
-        english: [],
-        arabic: []
-      });
-    }
-    return bannedWords.get(guildId);
-  }
-
-  static addBannedWord(guildId, word, language = 'english') {
-    const words = this.getBannedWords(guildId);
-    if (!words[language].includes(word.toLowerCase())) {
-      words[language].push(word.toLowerCase());
-      saveConfig();
-      return true;
-    }
-    return false;
-  }
-
-  static removeBannedWord(guildId, word, language = 'english') {
-    const words = this.getBannedWords(guildId);
-    const index = words[language].indexOf(word.toLowerCase());
-    if (index > -1) {
-      words[language].splice(index, 1);
-      saveConfig();
-      return true;
-    }
-    return false;
-  }
-
-  static async handleViolation(message, violationResult) {
-    try {
-      const config = getServerConfig(message.guild.id);
-      
-      // Delete the message if enabled
-      if (config.autoModSettings.deleteMessages) {
-        await message.delete();
-      }
-
-      // Add warning to user if enabled
-      if (config.autoModSettings.warnUsers) {
-        this.addWarning(message.guild.id, message.author.id, 
-          `Auto-mod violation: ${BilingualAutoMod.getViolationDescription(violationResult.violations, 'english')}`
-        );
-
-        // Send warning DM in appropriate language
-        await this.sendWarningDM(message, violationResult);
-      }
-
-      // Log the action if enabled
-      if (config.autoModSettings.logActions && config.logChannel) {
-        await this.logViolation(message, violationResult);
-      }
-
-      console.log(`🛡️ Auto-mod action for ${message.author.tag}: ${violationResult.severity} severity`);
-
-    } catch (error) {
-      console.error('Error handling auto-mod violation:', error);
-    }
-  }
-
-  static async sendWarningDM(message, violationResult) {
-    try {
-      const violationDesc = BilingualAutoMod.getViolationDescription(violationResult.violations, 'english');
-      const arabicDesc = BilingualAutoMod.getViolationDescription(violationResult.violations, 'arabic');
-      
-      const warningDM = new EmbedBuilder()
-        .setTitle('⚠️ Auto-Moderation Warning')
-        .setColor(0xFFA500)
-        .setDescription(`Your message in **${message.guild.name}** was flagged by our moderation system.`)
-        .addFields(
-          { name: 'Violation', value: violationDesc, inline: true },
-          { name: 'Severity', value: violationResult.severity.toUpperCase(), inline: true },
-          { name: 'Language', value: violationResult.language.toUpperCase(), inline: true },
-          { name: 'Message Preview', value: message.content.slice(0, 100) + '...', inline: false }
-        )
-        .setFooter({ text: 'Repeated violations may result in mutes or bans' })
-        .setTimestamp();
-
-      // Add Arabic description if relevant
-      if (violationResult.language === 'arabic') {
-        warningDM.addFields({
-          name: 'المخالفة',
-          value: arabicDesc,
-          inline: false
-        });
-      }
-
-      await message.author.send({ embeds: [warningDM] });
-    } catch (dmError) {
-      console.log(`Could not send DM to ${message.author.tag}`);
-    }
-  }
-
-  static async logViolation(message, violationResult) {
-    try {
-      const config = getServerConfig(message.guild.id);
-      const logChannel = message.guild.channels.cache.get(config.logChannel);
-      
-      if (!logChannel) return;
-
-      const violationDesc = BilingualAutoMod.getViolationDescription(violationResult.violations, 'english');
-      
-      const logEmbed = new EmbedBuilder()
-        .setTitle('🔨 Auto-Mod Action')
-        .setColor(0xFF0000)
-        .setDescription(`Message ${config.autoModSettings.deleteMessages ? 'deleted' : 'flagged'} for violation`)
-        .addFields(
-          { name: 'User', value: `${message.author.tag} (${message.author.id})`, inline: true },
-          { name: 'Channel', value: `${message.channel}`, inline: true },
-          { name: 'Violation', value: violationDesc, inline: true },
-          { name: 'Severity', value: violationResult.severity.toUpperCase(), inline: true },
-          { name: 'Language', value: violationResult.language.toUpperCase(), inline: true },
-          { name: 'Message', value: message.content.slice(0, 200) + '...', inline: false }
-        )
-        .setTimestamp();
-
-      await logChannel.send({ embeds: [logEmbed] });
-    } catch (error) {
-      console.error('Error logging violation:', error);
-    }
-  }
-
-  static addWarning(guildId, userId, reason) {
-    const guildWarnings = userWarnings.get(guildId) || {};
-    if (!guildWarnings[userId]) {
-      guildWarnings[userId] = [];
-    }
-    guildWarnings[userId].push({
-      reason,
-      timestamp: Date.now(),
-      moderator: 'Auto-Mod'
-    });
-    userWarnings.set(guildId, guildWarnings);
-    saveConfig();
-    
-    // Check if user should be muted
-    const config = getServerConfig(guildId);
-    const userWarningCount = guildWarnings[userId].length;
-    if (userWarningCount >= config.autoModSettings.maxWarnings) {
-      this.autoMuteUser(guildId, userId);
-    }
-    
-    return userWarningCount;
-  }
-
-  static async autoMuteUser(guildId, userId) {
-    try {
-      const guild = client.guilds.cache.get(guildId);
-      const member = await guild.members.fetch(userId);
-      const config = getServerConfig(guildId);
-      
-      // You would need to create a muted role first
-      // This is a placeholder for mute functionality
-      console.log(`🔇 Auto-mute triggered for ${member.user.tag} in ${guild.name} for ${config.autoModSettings.muteDuration} minutes`);
-      
-    } catch (error) {
-      console.error('Error auto-muting user:', error);
-    }
-  }
-
-  static getWarnings(guildId, userId) {
-    const guildWarnings = userWarnings.get(guildId) || {};
-    return guildWarnings[userId] || [];
-  }
-
-  static clearWarnings(guildId, userId) {
-    const guildWarnings = userWarnings.get(guildId) || {};
-    if (guildWarnings[userId]) {
-      delete guildWarnings[userId];
-      userWarnings.set(guildId, guildWarnings);
-      saveConfig();
-      return true;
-    }
-    return false;
-  }
-}
-
 // Rules System
 class RulesSystem {
   static getRules(guildId) {
@@ -1198,7 +1388,7 @@ const commands = [
     }
   },
 
-  // 🎵 Music Commands (Fixed)
+  // 🎵 Music Commands
   {
     name: 'join',
     description: 'Join a specific voice channel',
@@ -1734,7 +1924,7 @@ const commands = [
         warnings.slice(0, 10).forEach((warning, index) => {
           embed.addFields({
             name: `Warning ${index + 1}`,
-            value: `**Reason:** ${warning.reason}\n**By:** ${warning.moderator}\n**When:** <t:${Math.floor(warning.timestamp / 1000)}:R>`,
+            value: `**Reason:** ${warning.reason}\n**When:** <t:${Math.floor(warning.timestamp / 1000)}:R>`,
             inline: false
           });
         });
