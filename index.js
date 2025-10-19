@@ -55,7 +55,7 @@ const GLOBAL_BANNED_WORDS = {
     'كس', 'طيز', 'زبر', 'شرموط', 'عاهر', 'قحبة', 'دعارة',
     'كسم', 'كسمك', 'كسمكم', 'ابن المتناكة', 'ابن الكلب',
     'حمار', 'كلب', 'غبي', 'عبيط', 'هطل', 'لحس', 'يلعن',
-    'كفر', 'ملحد', 'زنديق', 'يلعن دين', 'طائفي'
+    'كفر', 'ملحد', 'zndeeq', 'يلعن دين', 'طائفي'
   ]
 };
 
@@ -404,7 +404,6 @@ class MusicSystem {
 }
 
 // Enhanced Auto-Moderation Functions
-// Optimized Auto-Moderation (faster, smarter)
 const GLOBAL_BANNED_WORDS_SET = new Set(
   [...GLOBAL_BANNED_WORDS.english, ...GLOBAL_BANNED_WORDS.arabic].map(w => w.toLowerCase())
 );
@@ -414,7 +413,7 @@ let pendingSave = false;
 function shouldScanMessage(userId) {
   const now = Date.now();
   const last = userLastScan.get(userId) || 0;
-  if (now - last < 1500) return false; // Skip if user messaged too recently
+  if (now - last < 1500) return false;
   userLastScan.set(userId, now);
   return true;
 }
@@ -691,42 +690,6 @@ function leaveVoice(guildId) {
   }
 
   return false;
-}
-
-// Enhanced Auto-Moderation Message Handler
-async function handleAutoMod(message) {
-  if (!message.guild || message.author.bot) return;
-  
-  const config = getServerConfig(message.guild.id);
-  if (!config.automod.enabled) return;
-
-  const content = message.content;
-  const violations = [];
-
-  const bannedWordCheck = containsBannedWords(content, config);
-  if (bannedWordCheck.found) {
-    violations.push(`Banned word: "${bannedWordCheck.word}"`);
-  }
-
-  if (config.automod.antiSpam && isSpam(message.author.id, message.guild.id)) {
-    violations.push('Spam detection (too many messages in short time)');
-  }
-
-  if (config.automod.antiMention && hasExcessiveMentions(content, config.automod.maxMentions)) {
-    violations.push(`Excessive mentions (more than ${config.automod.maxMentions})`);
-  }
-
-  if (config.automod.antiCaps && hasExcessiveCaps(content, config.automod.capsPercentage)) {
-    violations.push('Excessive capital letters');
-  }
-
-  if (config.automod.antiInvites && containsInviteLinks(content)) {
-    violations.push('Discord invite links');
-  }
-
-  if (violations.length > 0) {
-    await handleModAction(message, violations.join(', '), config);
-  }
 }
 
 // Command Definitions
@@ -1292,7 +1255,6 @@ const commands = [
       await interaction.reply({ embeds: [replyEmbed] });
     }
   }
-  // Add other commands as needed...
 ];
 
 // Register all commands
@@ -1302,6 +1264,15 @@ commands.forEach(cmd => {
 
 // Load configuration when bot starts
 loadConfig();
+
+// Quick health check endpoint that responds immediately
+app.get('/quick-health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    bot: client?.user ? 'ready' : 'starting'
+  });
+});
 
 // Health check endpoint
 app.get('/', (req, res) => {
@@ -1321,7 +1292,9 @@ app.get('/health', (req, res) => {
   res.status(200).json({ 
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    bot: client?.user ? 'connected' : 'disconnected'
+    bot: client?.user ? 'connected' : 'disconnected',
+    guilds: client?.guilds?.cache?.size || 0,
+    uptime: Math.floor(process.uptime())
   });
 });
 
@@ -1330,27 +1303,43 @@ const server = app.listen(PORT, () => {
   console.log(`🌐 Health check available at http://localhost:${PORT}`);
 });
 
-// Deploy commands function
+// Deploy commands function - OPTIMIZED VERSION
 async function deployCommands() {
   try {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
     
     console.log('🔄 Started refreshing application (/) commands.');
 
-    const commandData = commands.map(command => ({
+    // Only include commands that have execute functions
+    const deployableCommands = commands.filter(cmd => cmd.execute);
+    
+    const commandData = deployableCommands.map(command => ({
       name: command.name,
       description: command.description,
       options: command.options || []
     }));
 
-    await rest.put(
+    console.log(`📝 Deploying ${commandData.length} commands...`);
+
+    const data = await rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
       { body: commandData }
     );
 
-    console.log('✅ Successfully reloaded application (/) commands.');
+    console.log(`✅ Successfully reloaded ${data.length} application (/) commands.`);
+    return true;
+    
   } catch (error) {
     console.error('❌ Error deploying commands:', error);
+    
+    // Don't throw error - just log it and continue
+    if (error.code === 50001) {
+      console.log('💡 Missing Access: Make sure your bot has "applications.commands" scope');
+    } else if (error.code === 50013) {
+      console.log('💡 Missing Permissions: Bot needs "Use Application Commands" permission');
+    }
+    
+    return false;
   }
 }
 
@@ -1489,24 +1478,25 @@ client.once('ready', async (c) => {
   console.log(`🔄 Loaded ${client.commands.size} commands`);
   console.log(`🌐 Health check server running on port ${PORT}`);
 
-  // Auto-deploy commands on startup (only in production)
-  if (process.env.NODE_ENV === 'production') {
-    console.log('🚀 Auto-deploying commands...');
-    try {
-      await deployCommands();
-      console.log('✅ Commands deployed successfully');
-    } catch (error) {
-      console.error('❌ Command deployment failed:', error.message);
-      // Don't exit - let the bot run without command deployment
-    }
-  }
-
+  // Set activity immediately - don't wait for command deployment
   client.user.setActivity({
     name: `${c.guilds.cache.size} servers | /help`,
     type: ActivityType.Watching
   });
-});
 
+  // Auto-deploy commands on startup (only in production) - BUT DON'T AWAIT IT
+  if (process.env.NODE_ENV === 'production') {
+    console.log('🚀 Starting async command deployment...');
+    
+    // Deploy commands in background without blocking
+    deployCommands().then(() => {
+      console.log('✅ Commands deployed successfully');
+    }).catch(error => {
+      console.error('❌ Command deployment failed:', error.message);
+      // Bot continues running even if deployment fails
+    });
+  }
+});
 
 client.on('guildMemberAdd', async (member) => {
   await sendWelcomeMessages(member);
