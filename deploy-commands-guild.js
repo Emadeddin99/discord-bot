@@ -8,26 +8,66 @@ console.log('CLIENT_ID:', process.env.CLIENT_ID ? '✅ Set' : '❌ NOT SET');
 console.log('GUILD_ID:', process.env.GUILD_ID ? '✅ Set' : '❌ NOT SET');
 
 // ADMIN/CONFIGURATION COMMANDS ONLY - For testing and setup
-// Updated to match your main code capabilities
+// Updated to match all admin features
 const commands = [
-  // ⚙️ Setup Commands (simplified to match your main code)
+  // ⚙️ Setup Commands
   {
-    name: 'setup-basic',
-    description: 'Set up basic bot features for this server',
+    name: 'setup-automated',
+    description: 'Set up all automated systems with one command',
     options: [
       {
-        name: 'welcome_channel', type: 7, description: 'Channel for welcome messages', required: false, channel_types: [0]
+        name: 'level_channel', type: 7, description: 'Channel for level-up notifications', required: true, channel_types: [0]
       },
       {
-        name: 'goodbye_channel', type: 7, description: 'Channel for goodbye messages', required: false, channel_types: [0]
+        name: 'music_channel', type: 7, description: 'Channel for music commands', required: false, channel_types: [0]
       },
       {
-        name: 'auto_role', type: 8, description: 'Role to assign to new members', required: false
+        name: 'log_channel', type: 7, description: 'Channel for moderation logs', required: false, channel_types: [0]
+      },
+      {
+        name: 'new_role', type: 8, description: 'Role for new members (Level 1)', required: false
+      },
+      {
+        name: 'member_role', type: 8, description: 'Role for members (Level 10)', required: false
+      },
+      {
+        name: 'shadow_role', type: 8, description: 'Role for shadows (Level 25)', required: false
       }
     ]
   },
 
-  // 🛡️ Moderation Commands (basic ones that could work with your current structure)
+  // 🛡️ Moderation Commands
+  {
+    name: 'automod',
+    description: 'Configure auto moderation',
+    options: [
+      {
+        name: 'action', type: 3, description: 'What automod should do', required: true,
+        choices: [
+          { name: 'Toggle', value: 'toggle' }, { name: 'Status', value: 'status' }, { name: 'Set Action', value: 'setaction' },
+          { name: 'Set Log Channel', value: 'setlog' }, { name: 'Add Word', value: 'addword' },
+          { name: 'Remove Word', value: 'removeword' }, { name: 'List Words', value: 'listwords' }
+        ]
+      },
+      { name: 'value', type: 3, description: 'Value for setaction or word to add/remove', required: false },
+      { name: 'channel', type: 7, description: 'Channel for moderation logs', required: false, channel_types: [0] }
+    ]
+  },
+  {
+    name: 'warn',
+    description: 'Warn a user for rule violation',
+    options: [
+      { name: 'user', type: 6, description: 'The user to warn', required: true },
+      { name: 'reason', type: 3, description: 'Reason for the warning', required: true }
+    ]
+  },
+  {
+    name: 'clearwarnings',
+    description: 'Clear all warnings for a user',
+    options: [
+      { name: 'user', type: 6, description: 'The user to clear warnings for', required: true }
+    ]
+  },
   {
     name: 'clear',
     description: 'Clear messages from a channel',
@@ -49,7 +89,7 @@ const commands = [
     ]
   },
 
-  // 📋 System Configuration (matching your main code)
+  // 📋 System Configuration
   {
     name: 'setwelcome',
     description: 'Set the welcome channel for this server',
@@ -75,21 +115,27 @@ const commands = [
     ]
   },
   {
-    name: 'setautorole',
-    description: 'Set the auto-role for new members',
+    name: 'setup-verification',
+    description: 'Set up verification system for new members',
     options: [
-      {
-        name: 'role', type: 8, description: 'Role to assign to new members', required: true
-      }
+      { name: 'channel', type: 7, description: 'Channel for verification', required: true, channel_types: [0] },
+      { name: 'role', type: 8, description: 'Role to assign after verification', required: true }
     ]
   },
   {
-    name: 'togglewelcome',
-    description: 'Toggle welcome messages on/off',
+    name: 'rules',
+    description: 'Manage server rules',
     options: [
       {
-        name: 'enabled', type: 5, description: 'Enable or disable welcome messages', required: true
-      }
+        name: 'action', type: 3, description: 'Action to perform', required: true,
+        choices: [
+          { name: 'Add', value: 'add' }, { name: 'Remove', value: 'remove' }, { name: 'List', value: 'list' },
+          { name: 'Set Channel', value: 'setchannel' }, { name: 'Clear', value: 'clear' }, { name: 'Post', value: 'post' }
+        ]
+      },
+      { name: 'text', type: 3, description: 'Rule text (for add)', required: false },
+      { name: 'index', type: 4, description: 'Rule index (for remove)', required: false },
+      { name: 'channel', type: 7, description: 'Channel to post rules', required: false, channel_types: [0] }
     ]
   },
   {
@@ -128,14 +174,14 @@ async function deployGuildCommands() {
     console.log(`🎯 Commands available in server: ${guildId}`);
     
     console.log('\n⚡ Admin Commands Available:');
-    console.log('   ⚙️  Setup: /setup-basic, /setautorole, /togglewelcome');
-    console.log('   🛡️  Moderation: /clear, /slowmode');
-    console.log('   📋 System: /setwelcome, /setgoodbye, /config');
+    console.log('   ⚙️  Setup: /setup-automated');
+    console.log('   🛡️  Moderation: /automod, /warn, /clearwarnings, /clear, /slowmode');
+    console.log('   📋 System: /setwelcome, /setgoodbye, /setup-verification, /rules, /config');
     
     console.log('\n💡 Usage Tips:');
     console.log('   • Commands appear INSTANTLY (no 1-hour wait)');
     console.log('   • Perfect for testing and configuration');
-    console.log('   • Use /setup-basic to configure multiple features at once');
+    console.log('   • Use /setup-automated to configure everything at once');
     
     return true;
 

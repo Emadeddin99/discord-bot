@@ -1,10 +1,8 @@
 {
   "name": "discord-bot",
   "version": "3.0.0",
-  "description": "A comprehensive Discord bot with music, leveling, moderation, auto-moderation, welcome system, and utility commands",
+  "description": "A comprehensive Discord bot with music, moderation, auto-moderation, welcome system, and utility commands",
   "main": "index.js",
-  
-
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
@@ -21,7 +19,6 @@
     "discord",
     "bot",
     "music",
-    "leveling",
     "moderation",
     "automod",
     "welcome",
@@ -59,6 +56,7 @@
     "libsodium-wrappers": "^0.7.13",
     "opusscript": "^0.0.8",
     "quick.db": "^9.1.7",
+    "soundcloud-scraper": "^5.0.3",
     "ytdl-core": "^4.11.5"
   },
   "devDependencies": {
@@ -70,9 +68,5 @@
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
   },
-  "private": true,
-  "funding": {
-    "type": "individual",
-    "url": "https://github.com/sponsors/yourusername"
-  }
+  "private": true
 }
